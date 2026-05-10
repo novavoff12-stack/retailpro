@@ -56,6 +56,8 @@ export type Database = {
       guilds: {
         Row: {
           bot_id: string
+          close_message: string
+          confirmation_emoji: string
           created_at: string
           guild_id: string
           guild_name: string | null
@@ -64,9 +66,12 @@ export type Database = {
           modmail_category_id: string | null
           staff_role_id: string | null
           updated_at: string
+          welcome_message: string
         }
         Insert: {
           bot_id: string
+          close_message?: string
+          confirmation_emoji?: string
           created_at?: string
           guild_id: string
           guild_name?: string | null
@@ -75,9 +80,12 @@ export type Database = {
           modmail_category_id?: string | null
           staff_role_id?: string | null
           updated_at?: string
+          welcome_message?: string
         }
         Update: {
           bot_id?: string
+          close_message?: string
+          confirmation_emoji?: string
           created_at?: string
           guild_id?: string
           guild_name?: string | null
@@ -86,6 +94,7 @@ export type Database = {
           modmail_category_id?: string | null
           staff_role_id?: string | null
           updated_at?: string
+          welcome_message?: string
         }
         Relationships: [
           {
