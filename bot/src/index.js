@@ -10,14 +10,13 @@ import {
 import { createClient } from '@supabase/supabase-js';
 
 const {
-  DISCORD_BOT_TOKEN,
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
   BOT_ID,
 } = process.env;
 
-if (!DISCORD_BOT_TOKEN || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error('Missing env vars: DISCORD_BOT_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY');
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('Missing env vars: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY');
   process.exit(1);
 }
 
@@ -41,10 +40,12 @@ let botRow = null; // cached row from `bots` table
 async function loadBotRow() {
   let q = db.from('bots').select('*');
   if (BOT_ID) q = q.eq('id', BOT_ID);
-  else q = q.eq('bot_token', DISCORD_BOT_TOKEN);
   const { data, error } = await q.limit(1).maybeSingle();
   if (error) throw error;
-  if (!data) throw new Error('No matching row in `bots` table for this token');
+  if (!data) throw new Error(BOT_ID
+    ? `No row in \`bots\` table with id=${BOT_ID}`
+    : 'No bots found. Set BOT_ID env var or add a bot via the dashboard.');
+  if (!data.bot_token) throw new Error('Bot row has no bot_token saved');
   botRow = data;
   console.log(`Serving bot row ${botRow.id} (${botRow.bot_name ?? 'unnamed'})`);
 }
@@ -284,4 +285,4 @@ client.once('ready', () => {
 });
 
 await loadBotRow();
-await client.login(DISCORD_BOT_TOKEN);
+await client.login(botRow.bot_token);
