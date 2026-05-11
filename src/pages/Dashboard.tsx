@@ -54,7 +54,7 @@ interface Guild {
 const STEPS = [
   { id: 1, title: "Create Discord App", desc: "Register your application on Discord" },
   { id: 2, title: "Add Credentials", desc: "Paste your IDs and tokens" },
-  { id: 3, title: "Connect & Invite", desc: "Wire up interactions, invite, verify" },
+  { id: 3, title: "Invite & Verify", desc: "Add bot to your server and check it works" },
   { id: 4, title: "Configure Server", desc: "Guild, role, category, messages" },
 ];
 
