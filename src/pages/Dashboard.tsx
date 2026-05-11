@@ -286,8 +286,9 @@ const Dashboard = () => {
             {guildConfigured && isReady ? "Your modmail bot is live" : "Set up your Modmail bot"}
           </h1>
           <p className="text-muted-foreground mt-2 max-w-2xl">
-            Four short steps. Users open tickets with <code className="text-foreground">/modmail</code>, staff reply with{" "}
-            <code className="text-foreground">/reply</code>, close with <code className="text-foreground">/close</code>.
+            Users DM your bot directly to open tickets. Staff reply with{" "}
+            <code className="text-foreground">?reply</code> and close with{" "}
+            <code className="text-foreground">?close</code>.
           </p>
 
           <div className="mt-8 grid sm:grid-cols-4 gap-3">
