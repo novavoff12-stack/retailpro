@@ -174,20 +174,6 @@ const Dashboard = () => {
     }
   };
 
-  const handleRegister = async () => {
-    if (!bot) return;
-    setRegistering(true);
-    const { data, error } = await supabase.functions.invoke("discord-bot-admin", {
-      body: { action: "register-commands", bot_id: bot.id },
-    });
-    setRegistering(false);
-    if (error || !data?.ok) {
-      toast.error(data?.error ?? error?.message ?? "Failed to register commands");
-      return;
-    }
-    toast.success(`Registered: /${data.registered.join(", /")} — may take up to 1h to appear globally.`);
-  };
-
   const handleSaveGuild = async () => {
     if (!bot) return;
     if (!guildId.trim() || !categoryId.trim() || !staffRoleId.trim()) {
