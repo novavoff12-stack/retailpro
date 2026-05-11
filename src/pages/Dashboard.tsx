@@ -23,9 +23,7 @@ import {
   ArrowRight,
   Sparkles,
   Shield,
-  Link as LinkIcon,
   RefreshCcw,
-  Send,
   Server,
 } from "lucide-react";
 
