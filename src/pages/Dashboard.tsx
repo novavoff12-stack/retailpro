@@ -405,31 +405,12 @@ const Dashboard = () => {
         <Card className={!bot ? "opacity-60 pointer-events-none" : ""}>
           <CardHeader>
             <Badge variant="secondary" className="mb-2 w-fit">Step 3</Badge>
-            <CardTitle>Connect, invite & verify</CardTitle>
+            <CardTitle>Invite & verify</CardTitle>
             <CardDescription>
-              Paste the URL into Discord, invite the bot, register the slash commands, then verify.
+              Add the bot to your Discord server, then verify the token works.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <Label className="flex items-center gap-1.5">
-                  <LinkIcon className="h-3.5 w-3.5" /> Interactions Endpoint URL
-                </Label>
-                <span className="text-xs text-muted-foreground">Developer Portal → General Information</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 text-xs bg-secondary p-3 rounded-md break-all font-mono">
-                  {interactionsUrl || "Save your bot to generate this URL"}
-                </code>
-                <Button size="icon" variant="outline" onClick={() => copy(interactionsUrl, "url")} disabled={!interactionsUrl}>
-                  {copiedKey === "url" ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
-
-            <Separator />
-
             <div>
               <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                 <Label>Invite link</Label>
@@ -453,19 +434,16 @@ const Dashboard = () => {
             <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-3">
               <div>
                 <div className="font-medium text-sm flex items-center gap-2">
-                  <Send className="h-3.5 w-3.5" /> Register slash commands
+                  <RefreshCcw className="h-3.5 w-3.5" /> Verify connection
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Adds <code>/modmail</code>, <code>/reply</code>, and <code>/close</code> to your bot. Run once per credential change.
+                  Checks the bot token is valid and that the bot has joined at least one server.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-3">
-                <Button onClick={handleRegister} disabled={!bot || registering} variant="outline">
-                  {registering ? "Registering…" : "Register commands"}
-                </Button>
+              <div className="flex flex-wrap gap-3 items-center">
                 <Button onClick={handleVerify} disabled={!bot || verifying}>
                   <RefreshCcw className={`h-4 w-4 mr-2 ${verifying ? "animate-spin" : ""}`} />
-                  {verifying ? "Verifying…" : "Verify connection"}
+                  {verifying ? "Verifying…" : "Verify bot"}
                 </Button>
                 {isReady && (
                   <Badge variant="outline" className="gap-1.5">
