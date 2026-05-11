@@ -65,7 +65,6 @@ const Dashboard = () => {
   const [saving, setSaving] = useState(false);
   const [savingGuild, setSavingGuild] = useState(false);
   const [verifying, setVerifying] = useState(false);
-  const [registering, setRegistering] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [showToken, setShowToken] = useState(false);
 
