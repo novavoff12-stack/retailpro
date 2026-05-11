@@ -203,10 +203,6 @@ const Dashboard = () => {
     toast.success("Server configuration saved");
   };
 
-  const interactionsUrl = bot
-    ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/discord-interactions?bot_id=${bot.id}`
-    : "";
-
   const inviteUrl = bot
     ? `https://discord.com/oauth2/authorize?client_id=${bot.application_id}&scope=bot+applications.commands&permissions=534723950672`
     : "";
