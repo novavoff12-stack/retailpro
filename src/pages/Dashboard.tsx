@@ -23,9 +23,7 @@ import {
   ArrowRight,
   Sparkles,
   Shield,
-  Link as LinkIcon,
   RefreshCcw,
-  Send,
   Server,
 } from "lucide-react";
 
@@ -54,7 +52,7 @@ interface Guild {
 const STEPS = [
   { id: 1, title: "Create Discord App", desc: "Register your application on Discord" },
   { id: 2, title: "Add Credentials", desc: "Paste your IDs and tokens" },
-  { id: 3, title: "Connect & Invite", desc: "Wire up interactions, invite, verify" },
+  { id: 3, title: "Invite & Verify", desc: "Add bot to your server and check it works" },
   { id: 4, title: "Configure Server", desc: "Guild, role, category, messages" },
 ];
 
@@ -67,7 +65,6 @@ const Dashboard = () => {
   const [saving, setSaving] = useState(false);
   const [savingGuild, setSavingGuild] = useState(false);
   const [verifying, setVerifying] = useState(false);
-  const [registering, setRegistering] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [showToken, setShowToken] = useState(false);
 
@@ -177,20 +174,6 @@ const Dashboard = () => {
     }
   };
 
-  const handleRegister = async () => {
-    if (!bot) return;
-    setRegistering(true);
-    const { data, error } = await supabase.functions.invoke("discord-bot-admin", {
-      body: { action: "register-commands", bot_id: bot.id },
-    });
-    setRegistering(false);
-    if (error || !data?.ok) {
-      toast.error(data?.error ?? error?.message ?? "Failed to register commands");
-      return;
-    }
-    toast.success(`Registered: /${data.registered.join(", /")} — may take up to 1h to appear globally.`);
-  };
-
   const handleSaveGuild = async () => {
     if (!bot) return;
     if (!guildId.trim() || !categoryId.trim() || !staffRoleId.trim()) {
@@ -219,10 +202,6 @@ const Dashboard = () => {
     setGuild(data as Guild);
     toast.success("Server configuration saved");
   };
-
-  const interactionsUrl = bot
-    ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/discord-interactions?bot_id=${bot.id}`
-    : "";
 
   const inviteUrl = bot
     ? `https://discord.com/oauth2/authorize?client_id=${bot.application_id}&scope=bot+applications.commands&permissions=534723950672`
@@ -286,8 +265,9 @@ const Dashboard = () => {
             {guildConfigured && isReady ? "Your modmail bot is live" : "Set up your Modmail bot"}
           </h1>
           <p className="text-muted-foreground mt-2 max-w-2xl">
-            Four short steps. Users open tickets with <code className="text-foreground">/modmail</code>, staff reply with{" "}
-            <code className="text-foreground">/reply</code>, close with <code className="text-foreground">/close</code>.
+            Users DM your bot directly to open tickets. Staff reply with{" "}
+            <code className="text-foreground">?reply</code> and close with{" "}
+            <code className="text-foreground">?close</code>.
           </p>
 
           <div className="mt-8 grid sm:grid-cols-4 gap-3">
@@ -404,31 +384,12 @@ const Dashboard = () => {
         <Card className={!bot ? "opacity-60 pointer-events-none" : ""}>
           <CardHeader>
             <Badge variant="secondary" className="mb-2 w-fit">Step 3</Badge>
-            <CardTitle>Connect, invite & verify</CardTitle>
+            <CardTitle>Invite & verify</CardTitle>
             <CardDescription>
-              Paste the URL into Discord, invite the bot, register the slash commands, then verify.
+              Add the bot to your Discord server, then verify the token works.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <Label className="flex items-center gap-1.5">
-                  <LinkIcon className="h-3.5 w-3.5" /> Interactions Endpoint URL
-                </Label>
-                <span className="text-xs text-muted-foreground">Developer Portal → General Information</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 text-xs bg-secondary p-3 rounded-md break-all font-mono">
-                  {interactionsUrl || "Save your bot to generate this URL"}
-                </code>
-                <Button size="icon" variant="outline" onClick={() => copy(interactionsUrl, "url")} disabled={!interactionsUrl}>
-                  {copiedKey === "url" ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
-
-            <Separator />
-
             <div>
               <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                 <Label>Invite link</Label>
@@ -452,19 +413,16 @@ const Dashboard = () => {
             <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-3">
               <div>
                 <div className="font-medium text-sm flex items-center gap-2">
-                  <Send className="h-3.5 w-3.5" /> Register slash commands
+                  <RefreshCcw className="h-3.5 w-3.5" /> Verify connection
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Adds <code>/modmail</code>, <code>/reply</code>, and <code>/close</code> to your bot. Run once per credential change.
+                  Checks the bot token is valid and that the bot has joined at least one server.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-3">
-                <Button onClick={handleRegister} disabled={!bot || registering} variant="outline">
-                  {registering ? "Registering…" : "Register commands"}
-                </Button>
+              <div className="flex flex-wrap gap-3 items-center">
                 <Button onClick={handleVerify} disabled={!bot || verifying}>
                   <RefreshCcw className={`h-4 w-4 mr-2 ${verifying ? "animate-spin" : ""}`} />
-                  {verifying ? "Verifying…" : "Verify connection"}
+                  {verifying ? "Verifying…" : "Verify bot"}
                 </Button>
                 {isReady && (
                   <Badge variant="outline" className="gap-1.5">
@@ -542,8 +500,8 @@ const Dashboard = () => {
 
         <p className="text-center text-xs text-muted-foreground pb-8">
           Need help? Check the{" "}
-          <a href="https://discord.com/developers/docs/interactions/receiving-and-responding" target="_blank" rel="noreferrer" className="underline hover:text-foreground">
-            Discord interactions docs
+          <a href="https://github.com/your-repo/bot" target="_blank" rel="noreferrer" className="underline hover:text-foreground">
+            Railway bot deployment guide
           </a>.
         </p>
       </main>
