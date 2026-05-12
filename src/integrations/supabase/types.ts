@@ -177,6 +177,42 @@ export type Database = {
           },
         ]
       }
+      ticket_categories: {
+        Row: {
+          bot_id: string
+          created_at: string
+          description: string | null
+          emoji: string | null
+          guild_id: string
+          id: string
+          name: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          bot_id: string
+          created_at?: string
+          description?: string | null
+          emoji?: string | null
+          guild_id: string
+          id?: string
+          name: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          bot_id?: string
+          created_at?: string
+          description?: string | null
+          emoji?: string | null
+          guild_id?: string
+          id?: string
+          name?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ticket_messages: {
         Row: {
           author_discord_id: string
@@ -218,6 +254,8 @@ export type Database = {
       tickets: {
         Row: {
           bot_id: string
+          category_id: string | null
+          category_name: string | null
           channel_id: string | null
           closed_at: string | null
           created_at: string
@@ -229,6 +267,8 @@ export type Database = {
         }
         Insert: {
           bot_id: string
+          category_id?: string | null
+          category_name?: string | null
           channel_id?: string | null
           closed_at?: string | null
           created_at?: string
@@ -240,6 +280,8 @@ export type Database = {
         }
         Update: {
           bot_id?: string
+          category_id?: string | null
+          category_name?: string | null
           channel_id?: string | null
           closed_at?: string | null
           created_at?: string
