@@ -25,6 +25,9 @@ import {
   Shield,
   RefreshCcw,
   Server,
+  Plus,
+  Trash2,
+  Tag,
 } from "lucide-react";
 
 interface Bot {
