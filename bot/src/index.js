@@ -229,30 +229,44 @@ client.on('messageCreate', async (msg) => {
 
       const content = msg.content.trim();
 
-      // ?reply <text>
-      if (content.toLowerCase().startsWith('?reply')) {
-        const text = content.slice(6).trim();
-        if (!text) {
-          await msg.reply('Usage: `?reply <message>`');
-          return;
-        }
+      // Helper: relay staff text to user as embed, repost as embed in channel,
+      // delete the original staff message, and log it.
+      const sendStaffReply = async (text, attachmentUrls = []) => {
         const user = await client.users.fetch(ticket.user_discord_id).catch(() => null);
         if (!user) {
-          await msg.reply('Could not reach the user.');
+          await msg.channel.send('Could not reach the user.');
           return;
         }
         const replyEmbed = new EmbedBuilder()
           .setAuthor({ name: msg.author.username, iconURL: msg.author.displayAvatarURL() })
-          .setDescription(text)
+          .setDescription(text || '*(no text)*')
           .setColor(0x57f287)
+          .setFooter({ text: 'Staff reply' })
           .setTimestamp(new Date());
         try {
-          await user.send({ embeds: [replyEmbed] });
-          await msg.react(cfg.confirmation_emoji || '✅');
+          await user.send({ embeds: [replyEmbed], files: attachmentUrls });
+          await msg.channel.send({ embeds: [replyEmbed], files: attachmentUrls });
           await logMessage(ticket.id, msg.author, text, true);
+          try { await msg.delete(); } catch {}
         } catch (e) {
-          await msg.reply(`Could not DM the user: ${e.message}`);
+          await msg.channel.send(`Could not DM the user: ${e.message}`);
         }
+      };
+
+      // ?reply <text>
+      if (content.toLowerCase().startsWith('?reply')) {
+        let text = content.slice(6).trim();
+        // Strip optional surrounding quotes: ?reply "hello"
+        if ((text.startsWith('"') && text.endsWith('"')) ||
+            (text.startsWith("'") && text.endsWith("'"))) {
+          text = text.slice(1, -1).trim();
+        }
+        if (!text && msg.attachments.size === 0) {
+          await msg.reply('Usage: `?reply <message>`');
+          return;
+        }
+        const files = [...msg.attachments.values()].map((a) => a.url);
+        await sendStaffReply(text, files);
         return;
       }
 
@@ -274,6 +288,13 @@ client.on('messageCreate', async (msg) => {
         }).eq('id', ticket.id);
         await msg.reply('Closing ticket in 5s…');
         setTimeout(() => msg.channel.delete().catch(() => {}), 5000);
+        return;
+      }
+
+      // Any other non-command staff message → auto-relay as embed
+      if (!content.startsWith('?')) {
+        const files = [...msg.attachments.values()].map((a) => a.url);
+        await sendStaffReply(content, files);
         return;
       }
     }
