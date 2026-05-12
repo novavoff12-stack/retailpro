@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import ws from 'ws';
 import {
   Client,
   GatewayIntentBits,
@@ -22,6 +23,7 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
+  realtime: { transport: ws },
 });
 
 const client = new Client({
