@@ -52,6 +52,16 @@ interface Guild {
   confirmation_emoji: string;
 }
 
+interface TicketCategory {
+  id: string;
+  bot_id: string;
+  guild_id: string;
+  name: string;
+  description: string | null;
+  emoji: string | null;
+  sort_order: number;
+}
+
 const STEPS = [
   { id: 1, title: "Create Discord App", desc: "Register your application on Discord" },
   { id: 2, title: "Add Credentials", desc: "Paste your IDs and tokens" },
