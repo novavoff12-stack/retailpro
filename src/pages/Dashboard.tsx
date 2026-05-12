@@ -566,7 +566,86 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
-        <p className="text-center text-xs text-muted-foreground pb-8">
+        {/* Ticket categories */}
+        <Card className={!guildConfigured ? "opacity-60 pointer-events-none" : ""}>
+          <CardHeader>
+            <Badge variant="secondary" className="mb-2 w-fit">Optional</Badge>
+            <CardTitle className="flex items-center gap-2">
+              <Tag className="h-5 w-5" /> Ticket categories
+            </CardTitle>
+            <CardDescription>
+              When a user DMs the bot, they'll be asked to pick a category before opening a ticket.
+              Leave this empty to skip the picker entirely.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {categories.length > 0 && (
+              <div className="space-y-2">
+                {categories.map((c) => (
+                  <div key={c.id} className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 p-3">
+                    <Input
+                      value={c.emoji ?? ""}
+                      onChange={(e) => setCategories((prev) => prev.map((x) => x.id === c.id ? { ...x, emoji: e.target.value } : x))}
+                      onBlur={(e) => handleUpdateCategory(c.id, { emoji: e.target.value.trim() || null })}
+                      placeholder="🎫"
+                      className="w-16 text-center"
+                    />
+                    <Input
+                      value={c.name}
+                      onChange={(e) => setCategories((prev) => prev.map((x) => x.id === c.id ? { ...x, name: e.target.value } : x))}
+                      onBlur={(e) => e.target.value.trim() && handleUpdateCategory(c.id, { name: e.target.value.trim() })}
+                      placeholder="Category name"
+                      className="flex-1"
+                    />
+                    <Input
+                      value={c.description ?? ""}
+                      onChange={(e) => setCategories((prev) => prev.map((x) => x.id === c.id ? { ...x, description: e.target.value } : x))}
+                      onBlur={(e) => handleUpdateCategory(c.id, { description: e.target.value.trim() || null })}
+                      placeholder="Short description (optional)"
+                      className="flex-[2]"
+                    />
+                    <Button variant="ghost" size="icon" onClick={() => handleDeleteCategory(c.id)} aria-label="Delete category">
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <Separator />
+
+            <div className="space-y-3">
+              <Label>Add a category</Label>
+              <div className="flex flex-wrap items-end gap-2">
+                <Input
+                  value={newCatEmoji}
+                  onChange={(e) => setNewCatEmoji(e.target.value)}
+                  placeholder="🎫"
+                  className="w-16 text-center"
+                />
+                <Input
+                  value={newCatName}
+                  onChange={(e) => setNewCatName(e.target.value)}
+                  placeholder="General Inquiries"
+                  className="flex-1 min-w-[180px]"
+                />
+                <Input
+                  value={newCatDesc}
+                  onChange={(e) => setNewCatDesc(e.target.value)}
+                  placeholder="Anything else"
+                  className="flex-[2] min-w-[200px]"
+                />
+                <Button onClick={handleAddCategory} disabled={savingCat || !newCatName.trim()}>
+                  <Plus className="h-4 w-4 mr-2" /> Add
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Up to 25 categories. Tip: try "General Inquiries", "Product Support", "Billing", "Report a User".
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
           Need help? Check the{" "}
           <a href="https://github.com/your-repo/bot" target="_blank" rel="noreferrer" className="underline hover:text-foreground">
             Railway bot deployment guide
