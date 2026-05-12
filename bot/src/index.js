@@ -377,6 +377,61 @@ client.on('messageCreate', async (msg) => {
   }
 });
 
+// ---------- Category select (DM picker) ----------
+client.on('interactionCreate', async (interaction) => {
+  try {
+    if (!interaction.isStringSelectMenu()) return;
+    if (!interaction.customId.startsWith('cat:')) return;
+
+    const guildId = interaction.customId.slice(4);
+    const categoryId = interaction.values[0];
+
+    await interaction.deferUpdate().catch(() => {});
+
+    const cfg = await getGuildConfig(guildId);
+    if (!cfg) return;
+    const guild = await client.guilds.fetch(cfg.guild_id).catch(() => null);
+    if (!guild) return;
+
+    const { data: category } = await db
+      .from('ticket_categories')
+      .select('*')
+      .eq('id', categoryId)
+      .maybeSingle();
+
+    const pending = pendingDMs.get(interaction.user.id);
+    if (pending?.timer) clearTimeout(pending.timer);
+    pendingDMs.delete(interaction.user.id);
+
+    let ticket = await findOpenTicketByUser(interaction.user.id);
+    let channel = ticket?.channel_id
+      ? await guild.channels.fetch(ticket.channel_id).catch(() => null)
+      : null;
+
+    if (!channel) {
+      const created = await createTicketChannel(cfg, guild, interaction.user, category ?? null);
+      if (!created) return;
+      ticket = created.ticket;
+      channel = created.channel;
+    }
+
+    if (pending) {
+      await relayUserMessageToChannel(channel, interaction.user, pending.content, pending.files);
+      await logMessage(ticket.id, interaction.user, pending.content, false);
+    }
+
+    try {
+      const doneEmbed = new EmbedBuilder()
+        .setTitle('Ticket opened')
+        .setDescription(`Category: **${category?.emoji ? `${category.emoji} ` : ''}${category?.name ?? 'General'}**\n\nA staff member will be with you shortly. Keep replying here to send more messages.`)
+        .setColor(0x57f287);
+      await interaction.editReply({ embeds: [doneEmbed], components: [] });
+    } catch {}
+  } catch (err) {
+    console.error('interactionCreate handler', err);
+  }
+});
+
 client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
