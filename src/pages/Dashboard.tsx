@@ -232,6 +232,45 @@ const Dashboard = () => {
     toast.success("Server configuration saved");
   };
 
+  const handleAddCategory = async () => {
+    if (!bot || !guild) return;
+    const nm = newCatName.trim();
+    if (!nm) return toast.error("Category name is required");
+    setSavingCat(true);
+    const { data, error } = await supabase
+      .from("ticket_categories")
+      .insert({
+        bot_id: bot.id,
+        guild_id: guild.guild_id,
+        name: nm,
+        description: newCatDesc.trim() || null,
+        emoji: newCatEmoji.trim() || null,
+        sort_order: categories.length,
+      })
+      .select()
+      .single();
+    setSavingCat(false);
+    if (error) return toast.error(error.message);
+    setCategories((prev) => [...prev, data as TicketCategory]);
+    setNewCatName("");
+    setNewCatDesc("");
+    setNewCatEmoji("");
+    toast.success("Category added");
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    const { error } = await supabase.from("ticket_categories").delete().eq("id", id);
+    if (error) return toast.error(error.message);
+    setCategories((prev) => prev.filter((c) => c.id !== id));
+    toast.success("Category removed");
+  };
+
+  const handleUpdateCategory = async (id: string, patch: Partial<TicketCategory>) => {
+    const { error } = await supabase.from("ticket_categories").update(patch).eq("id", id);
+    if (error) return toast.error(error.message);
+    setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  };
+
   const inviteUrl = bot
     ? `https://discord.com/oauth2/authorize?client_id=${bot.application_id}&scope=bot+applications.commands&permissions=534723950672`
     : "";
