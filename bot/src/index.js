@@ -7,6 +7,8 @@ import {
   ChannelType,
   PermissionFlagsBits,
   EmbedBuilder,
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
 } from 'discord.js';
 import { createClient } from '@supabase/supabase-js';
 
