@@ -132,6 +132,15 @@ const Dashboard = () => {
           setWelcomeMsg(g.welcome_message);
           setCloseMsg(g.close_message);
           setConfirmEmoji(g.confirmation_emoji);
+
+          const { data: cats } = await supabase
+            .from("ticket_categories")
+            .select("*")
+            .eq("bot_id", botRow.id)
+            .eq("guild_id", g.guild_id)
+            .order("sort_order", { ascending: true })
+            .order("name", { ascending: true });
+          if (cats) setCategories(cats as TicketCategory[]);
         }
       }
       setFetching(false);
