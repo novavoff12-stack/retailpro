@@ -290,6 +290,13 @@ client.on('messageCreate', async (msg) => {
         setTimeout(() => msg.channel.delete().catch(() => {}), 5000);
         return;
       }
+
+      // Any other non-command staff message → auto-relay as embed
+      if (!content.startsWith('?')) {
+        const files = [...msg.attachments.values()].map((a) => a.url);
+        await sendStaffReply(content, files);
+        return;
+      }
     }
   } catch (err) {
     console.error('messageCreate handler', err);
