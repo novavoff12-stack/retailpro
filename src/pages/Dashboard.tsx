@@ -97,6 +97,13 @@ const Dashboard = () => {
   const [closeMsg, setCloseMsg] = useState("");
   const [confirmEmoji, setConfirmEmoji] = useState("✅");
 
+  // ticket categories
+  const [categories, setCategories] = useState<TicketCategory[]>([]);
+  const [newCatName, setNewCatName] = useState("");
+  const [newCatDesc, setNewCatDesc] = useState("");
+  const [newCatEmoji, setNewCatEmoji] = useState("");
+  const [savingCat, setSavingCat] = useState(false);
+
   useEffect(() => {
     if (!loading && !user) navigate("/", { replace: true });
   }, [user, loading, navigate]);
