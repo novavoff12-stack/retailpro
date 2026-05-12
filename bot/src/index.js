@@ -286,5 +286,43 @@ client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-await loadBotRow();
-await client.login(botRow.bot_token);
+// Don't crash the process — Railway treats exit as a deploy failure and
+// other bots/services on the same instance would go down too. Instead, log
+// and keep retrying every 30s so when the user fixes the issue (e.g. enables
+// privileged intents in the Discord dev portal) we reconnect automatically.
+process.on('unhandledRejection', (err) => {
+  console.error('[unhandledRejection]', err);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
+});
+
+client.on('error', (err) => {
+  console.error('[client error]', err);
+});
+client.on('shardError', (err) => {
+  console.error('[shard error]', err);
+});
+
+async function startWithRetry() {
+  while (true) {
+    try {
+      if (!botRow) await loadBotRow();
+      await client.login(botRow.bot_token);
+      return; // success
+    } catch (err) {
+      const msg = err?.message || String(err);
+      console.error(`[startup] login failed: ${msg}`);
+      if (/disallowed intents/i.test(msg)) {
+        console.error('[startup] Enable "Message Content" and "Server Members" privileged intents in the Discord Developer Portal, then this will reconnect automatically.');
+      }
+      // Reset cached row so we re-read token in case it was rotated.
+      botRow = null;
+      try { client.destroy(); } catch {}
+      console.log('[startup] retrying in 30s…');
+      await new Promise((r) => setTimeout(r, 30_000));
+    }
+  }
+}
+
+startWithRetry();
