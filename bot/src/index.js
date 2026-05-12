@@ -108,6 +108,99 @@ async function logMessage(ticketId, author, content, isStaff) {
   });
 }
 
+async function getCategories(guildId) {
+  const { data, error } = await db
+    .from('ticket_categories')
+    .select('*')
+    .eq('bot_id', botRow.id)
+    .eq('guild_id', guildId)
+    .order('sort_order', { ascending: true })
+    .order('name', { ascending: true });
+  if (error) console.error('getCategories', error);
+  return data ?? [];
+}
+
+// Pending DMs awaiting category selection: userId -> { content, files, cfg, timer }
+const pendingDMs = new Map();
+
+async function createTicketChannel(cfg, guild, user, category) {
+  const overwrites = [
+    { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+    {
+      id: client.user.id,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ManageChannels,
+        PermissionFlagsBits.ReadMessageHistory,
+      ],
+    },
+  ];
+  if (cfg.staff_role_id) {
+    overwrites.push({
+      id: cfg.staff_role_id,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory,
+      ],
+    });
+  }
+
+  const baseName = `modmail-${user.username}`.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 90) || `modmail-${user.id}`;
+  const channel = await guild.channels.create({
+    name: baseName,
+    type: ChannelType.GuildText,
+    parent: cfg.modmail_category_id,
+    permissionOverwrites: overwrites,
+    topic: `Modmail with ${user.tag} (${user.id})${category ? ` — ${category.name}` : ''}`,
+  });
+
+  const { data: newTicket, error: tErr } = await db.from('tickets').insert({
+    bot_id: botRow.id,
+    guild_id: cfg.guild_id,
+    user_discord_id: user.id,
+    channel_id: channel.id,
+    status: 'open',
+    category_id: category?.id ?? null,
+    category_name: category?.name ?? null,
+  }).select().single();
+  if (tErr) {
+    console.error('insert ticket', tErr);
+    return null;
+  }
+
+  const headerEmbed = new EmbedBuilder()
+    .setTitle('New modmail ticket')
+    .setDescription(`From <@${user.id}> (\`${user.tag}\`)`)
+    .setThumbnail(user.displayAvatarURL())
+    .setColor(0x5865f2)
+    .setTimestamp(new Date());
+  if (category) {
+    headerEmbed.addFields({
+      name: 'Category',
+      value: `${category.emoji ? `${category.emoji} ` : ''}${category.name}`,
+    });
+  }
+  await channel.send({
+    content: cfg.staff_role_id ? `<@&${cfg.staff_role_id}>` : undefined,
+    embeds: [headerEmbed],
+  });
+
+  try { await user.send(cfg.welcome_message); } catch {}
+
+  return { ticket: newTicket, channel };
+}
+
+async function relayUserMessageToChannel(channel, user, content, files) {
+  const userEmbed = new EmbedBuilder()
+    .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL() })
+    .setDescription(content || '*(no text)*')
+    .setColor(0x5865f2)
+    .setTimestamp(new Date());
+  await channel.send({ embeds: [userEmbed], files: files ?? [] });
+}
+
 // ---------- DM from a user ----------
 client.on('messageCreate', async (msg) => {
   try {
@@ -133,80 +226,59 @@ client.on('messageCreate', async (msg) => {
         channel = await guild.channels.fetch(ticket.channel_id).catch(() => null);
       }
 
+      const files = [...msg.attachments.values()].map((a) => a.url);
+
       if (!channel) {
-        // Create a new ticket channel
-        const overwrites = [
-          {
-            id: guild.roles.everyone.id,
-            deny: [PermissionFlagsBits.ViewChannel],
-          },
-          {
-            id: client.user.id,
-            allow: [
-              PermissionFlagsBits.ViewChannel,
-              PermissionFlagsBits.SendMessages,
-              PermissionFlagsBits.ManageChannels,
-              PermissionFlagsBits.ReadMessageHistory,
-            ],
-          },
-        ];
-        if (cfg.staff_role_id) {
-          overwrites.push({
-            id: cfg.staff_role_id,
-            allow: [
-              PermissionFlagsBits.ViewChannel,
-              PermissionFlagsBits.SendMessages,
-              PermissionFlagsBits.ReadMessageHistory,
-            ],
+        // No open ticket — see if we should ask for a category first
+        const categories = await getCategories(cfg.guild_id);
+
+        if (categories.length > 0) {
+          // Already waiting on a selection? Just remind them.
+          if (pendingDMs.has(msg.author.id)) {
+            try { await msg.react('⌛'); } catch {}
+            return;
+          }
+          // Cache the original message and show the picker
+          const select = new StringSelectMenuBuilder()
+            .setCustomId(`cat:${cfg.guild_id}`)
+            .setPlaceholder('Choose a category…')
+            .addOptions(
+              categories.slice(0, 25).map((c) => ({
+                label: c.name.slice(0, 100),
+                description: c.description ? c.description.slice(0, 100) : undefined,
+                value: c.id,
+                emoji: c.emoji || undefined,
+              })),
+            );
+          const row = new ActionRowBuilder().addComponents(select);
+          const promptEmbed = new EmbedBuilder()
+            .setTitle('Open a ticket')
+            .setDescription('Pick the category that best fits your message. Your original message will be sent to staff once you choose.')
+            .setColor(0x5865f2);
+
+          await msg.author.send({ embeds: [promptEmbed], components: [row] });
+
+          // Cache pending message (auto-expire after 10 min)
+          const timer = setTimeout(() => pendingDMs.delete(msg.author.id), 10 * 60_000);
+          pendingDMs.set(msg.author.id, {
+            content: msg.content,
+            files,
+            cfg,
+            timer,
           });
-        }
-
-        channel = await guild.channels.create({
-          name: `modmail-${msg.author.username}`.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 90) || `modmail-${msg.author.id}`,
-          type: ChannelType.GuildText,
-          parent: cfg.modmail_category_id,
-          permissionOverwrites: overwrites,
-          topic: `Modmail with ${msg.author.tag} (${msg.author.id})`,
-        });
-
-        const { data: newTicket, error: tErr } = await db.from('tickets').insert({
-          bot_id: botRow.id,
-          guild_id: cfg.guild_id,
-          user_discord_id: msg.author.id,
-          channel_id: channel.id,
-          status: 'open',
-        }).select().single();
-        if (tErr) {
-          console.error('insert ticket', tErr);
+          try { await msg.react('📋'); } catch {}
           return;
         }
-        ticket = newTicket;
 
-        const headerEmbed = new EmbedBuilder()
-          .setTitle('New modmail ticket')
-          .setDescription(`From <@${msg.author.id}> (\`${msg.author.tag}\`)`)
-          .setThumbnail(msg.author.displayAvatarURL())
-          .setTimestamp(new Date());
-        await channel.send({
-          content: cfg.staff_role_id ? `<@&${cfg.staff_role_id}>` : undefined,
-          embeds: [headerEmbed],
-        });
-
-        // Welcome DM
-        try {
-          await msg.author.send(cfg.welcome_message);
-        } catch {}
+        // No categories configured — fall back to legacy direct creation
+        const created = await createTicketChannel(cfg, guild, msg.author, null);
+        if (!created) return;
+        ticket = created.ticket;
+        channel = created.channel;
       }
 
       // Relay user's message into the channel
-      const userEmbed = new EmbedBuilder()
-        .setAuthor({ name: msg.author.tag, iconURL: msg.author.displayAvatarURL() })
-        .setDescription(msg.content || '*(no text)*')
-        .setColor(0x5865f2)
-        .setTimestamp(new Date());
-      const files = [...msg.attachments.values()].map((a) => a.url);
-      await channel.send({ embeds: [userEmbed], files });
-
+      await relayUserMessageToChannel(channel, msg.author, msg.content, files);
       await logMessage(ticket.id, msg.author, msg.content, false);
 
       // Confirmation reaction
