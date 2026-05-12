@@ -646,6 +646,7 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
+        <p className="text-center text-xs text-muted-foreground pb-8">
           Need help? Check the{" "}
           <a href="https://github.com/your-repo/bot" target="_blank" rel="noreferrer" className="underline hover:text-foreground">
             Railway bot deployment guide
