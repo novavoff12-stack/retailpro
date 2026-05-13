@@ -16,6 +16,7 @@ const {
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
   BOT_ID,
+  TRANSCRIPT_BASE_URL,
 } = process.env;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -23,78 +24,52 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   process.exit(1);
 }
 
+const TRANSCRIPT_BASE = (TRANSCRIPT_BASE_URL || 'https://modmail.retailpro.space').replace(/\/+$/, '');
+
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
   realtime: { transport: ws },
 });
 
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.DirectMessages,
-    GatewayIntentBits.GuildMembers,
-  ],
-  partials: [Partials.Channel, Partials.Message],
-});
+// ============================================================
+// Multi-bot manager
+// Each entry: { botRow, client, pendingDMs, retryAt, status }
+// status: 'starting' | 'ready' | 'failed' | 'stopping'
+// ============================================================
+const workers = new Map();
 
-let botRow = null; // cached row from `bots` table
-
-async function loadBotRow() {
-  let q = db.from('bots').select('*');
-  if (BOT_ID) q = q.eq('id', BOT_ID);
-  const { data, error } = await q.limit(1).maybeSingle();
-  if (error) throw error;
-  if (!data) throw new Error(BOT_ID
-    ? `No row in \`bots\` table with id=${BOT_ID}`
-    : 'No bots found. Set BOT_ID env var or add a bot via the dashboard.');
-  if (!data.bot_token) throw new Error('Bot row has no bot_token saved');
-  botRow = data;
-  console.log(`Serving bot row ${botRow.id} (${botRow.bot_name ?? 'unnamed'})`);
+function transcriptUrl(ticketId) {
+  return `${TRANSCRIPT_BASE}/transcript/id/${ticketId}`;
 }
 
-async function getGuildConfig(guildId) {
+async function getGuildConfig(ctx, guildId) {
   const { data, error } = await db
-    .from('guilds')
-    .select('*')
-    .eq('bot_id', botRow.id)
-    .eq('guild_id', guildId)
-    .maybeSingle();
-  if (error) console.error('getGuildConfig', error);
+    .from('guilds').select('*')
+    .eq('bot_id', ctx.botRow.id).eq('guild_id', guildId).maybeSingle();
+  if (error) console.error(`[${ctx.botRow.id}] getGuildConfig`, error);
   return data;
 }
 
-async function getFirstGuildConfig() {
-  // For DM flow when we don't yet know which guild — pick the only configured guild for this bot.
+async function getFirstGuildConfig(ctx) {
   const { data, error } = await db
-    .from('guilds')
-    .select('*')
-    .eq('bot_id', botRow.id)
-    .limit(1);
-  if (error) console.error('getFirstGuildConfig', error);
+    .from('guilds').select('*').eq('bot_id', ctx.botRow.id).limit(1);
+  if (error) console.error(`[${ctx.botRow.id}] getFirstGuildConfig`, error);
   return data?.[0] ?? null;
 }
 
-async function findOpenTicketByUser(discordUserId) {
+async function findOpenTicketByUser(ctx, discordUserId) {
   const { data } = await db
-    .from('tickets')
-    .select('*')
-    .eq('bot_id', botRow.id)
-    .eq('user_discord_id', discordUserId)
-    .eq('status', 'open')
-    .limit(1);
+    .from('tickets').select('*')
+    .eq('bot_id', ctx.botRow.id).eq('user_discord_id', discordUserId)
+    .eq('status', 'open').limit(1);
   return data?.[0] ?? null;
 }
 
-async function findOpenTicketByChannel(channelId) {
+async function findOpenTicketByChannel(ctx, channelId) {
   const { data } = await db
-    .from('tickets')
-    .select('*')
-    .eq('bot_id', botRow.id)
-    .eq('channel_id', channelId)
-    .eq('status', 'open')
-    .limit(1);
+    .from('tickets').select('*')
+    .eq('bot_id', ctx.botRow.id).eq('channel_id', channelId)
+    .eq('status', 'open').limit(1);
   return data?.[0] ?? null;
 }
 
@@ -108,26 +83,21 @@ async function logMessage(ticketId, author, content, isStaff) {
   });
 }
 
-async function getCategories(guildId) {
+async function getCategories(ctx, guildId) {
   const { data, error } = await db
-    .from('ticket_categories')
-    .select('*')
-    .eq('bot_id', botRow.id)
-    .eq('guild_id', guildId)
+    .from('ticket_categories').select('*')
+    .eq('bot_id', ctx.botRow.id).eq('guild_id', guildId)
     .order('sort_order', { ascending: true })
     .order('name', { ascending: true });
-  if (error) console.error('getCategories', error);
+  if (error) console.error(`[${ctx.botRow.id}] getCategories`, error);
   return data ?? [];
 }
 
-// Pending DMs awaiting category selection: userId -> { content, files, cfg, timer }
-const pendingDMs = new Map();
-
-async function createTicketChannel(cfg, guild, user, category) {
+async function createTicketChannel(ctx, cfg, guild, user, category) {
   const overwrites = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
     {
-      id: client.user.id,
+      id: ctx.client.user.id,
       allow: [
         PermissionFlagsBits.ViewChannel,
         PermissionFlagsBits.SendMessages,
@@ -157,7 +127,7 @@ async function createTicketChannel(cfg, guild, user, category) {
   });
 
   const { data: newTicket, error: tErr } = await db.from('tickets').insert({
-    bot_id: botRow.id,
+    bot_id: ctx.botRow.id,
     guild_id: cfg.guild_id,
     user_discord_id: user.id,
     channel_id: channel.id,
@@ -166,7 +136,7 @@ async function createTicketChannel(cfg, guild, user, category) {
     category_name: category?.name ?? null,
   }).select().single();
   if (tErr) {
-    console.error('insert ticket', tErr);
+    console.error(`[${ctx.botRow.id}] insert ticket`, tErr);
     return null;
   }
 
@@ -182,6 +152,8 @@ async function createTicketChannel(cfg, guild, user, category) {
       value: `${category.emoji ? `${category.emoji} ` : ''}${category.name}`,
     });
   }
+  headerEmbed.addFields({ name: 'Transcript', value: transcriptUrl(newTicket.id) });
+
   await channel.send({
     content: cfg.staff_role_id ? `<@&${cfg.staff_role_id}>` : undefined,
     embeds: [headerEmbed],
@@ -201,278 +173,342 @@ async function relayUserMessageToChannel(channel, user, content, files) {
   await channel.send({ embeds: [userEmbed], files: files ?? [] });
 }
 
-// ---------- DM from a user ----------
-client.on('messageCreate', async (msg) => {
-  try {
-    if (msg.author.bot) return;
+// ========== Per-bot handlers ==========
+function attachHandlers(ctx) {
+  const { client } = ctx;
 
-    // DM channel = open / append to ticket
-    if (msg.channel.type === ChannelType.DM) {
-      const cfg = await getFirstGuildConfig();
-      if (!cfg || !cfg.modmail_category_id) {
-        await msg.reply('Modmail is not configured yet. Please try again later.');
+  client.on('messageCreate', async (msg) => {
+    try {
+      if (msg.author.bot) return;
+
+      // --- DM from a user ---
+      if (msg.channel.type === ChannelType.DM) {
+        const cfg = await getFirstGuildConfig(ctx);
+        if (!cfg || !cfg.modmail_category_id) {
+          await msg.reply('Modmail is not configured yet. Please try again later.');
+          return;
+        }
+        const guild = await client.guilds.fetch(cfg.guild_id).catch(() => null);
+        if (!guild) { await msg.reply('Modmail server unavailable.'); return; }
+
+        let ticket = await findOpenTicketByUser(ctx, msg.author.id);
+        let channel = ticket?.channel_id
+          ? await guild.channels.fetch(ticket.channel_id).catch(() => null)
+          : null;
+
+        const files = [...msg.attachments.values()].map((a) => a.url);
+
+        if (!channel) {
+          const categories = await getCategories(ctx, cfg.guild_id);
+
+          if (categories.length > 0) {
+            if (ctx.pendingDMs.has(msg.author.id)) {
+              try { await msg.react('⌛'); } catch {}
+              return;
+            }
+            const select = new StringSelectMenuBuilder()
+              .setCustomId(`cat:${cfg.guild_id}`)
+              .setPlaceholder('Choose a category…')
+              .addOptions(
+                categories.slice(0, 25).map((c) => {
+                  const opt = {
+                    label: c.name.slice(0, 100),
+                    value: c.id,
+                  };
+                  if (c.description) opt.description = c.description.slice(0, 100);
+                  if (c.emoji) opt.emoji = c.emoji;
+                  return opt;
+                }),
+              );
+            const row = new ActionRowBuilder().addComponents(select);
+            const promptEmbed = new EmbedBuilder()
+              .setTitle('Open a ticket')
+              .setDescription('Pick the category that best fits your message. Your original message will be sent to staff once you choose.')
+              .setColor(0x5865f2);
+
+            await msg.author.send({ embeds: [promptEmbed], components: [row] });
+
+            const timer = setTimeout(() => ctx.pendingDMs.delete(msg.author.id), 10 * 60_000);
+            ctx.pendingDMs.set(msg.author.id, {
+              content: msg.content, files, cfg, timer,
+            });
+            try { await msg.react('📋'); } catch {}
+            return;
+          }
+
+          const created = await createTicketChannel(ctx, cfg, guild, msg.author, null);
+          if (!created) return;
+          ticket = created.ticket;
+          channel = created.channel;
+        }
+
+        await relayUserMessageToChannel(channel, msg.author, msg.content, files);
+        await logMessage(ticket.id, msg.author, msg.content, false);
+        try { await msg.react(cfg.confirmation_emoji || '✅'); } catch {}
+        return;
+      }
+
+      // --- Staff message in guild ---
+      if (msg.channel.type === ChannelType.GuildText && msg.channel.parentId) {
+        const ticket = await findOpenTicketByChannel(ctx, msg.channel.id);
+        if (!ticket) return;
+        const cfg = await getGuildConfig(ctx, msg.guild.id);
+        if (!cfg) return;
+
+        if (cfg.staff_role_id) {
+          const member = await msg.guild.members.fetch(msg.author.id).catch(() => null);
+          if (!member?.roles.cache.has(cfg.staff_role_id)) return;
+        }
+
+        const content = msg.content.trim();
+
+        const sendStaffReply = async (text, attachmentUrls = []) => {
+          const user = await client.users.fetch(ticket.user_discord_id).catch(() => null);
+          if (!user) { await msg.channel.send('Could not reach the user.'); return; }
+          const replyEmbed = new EmbedBuilder()
+            .setAuthor({ name: msg.author.username, iconURL: msg.author.displayAvatarURL() })
+            .setDescription(text || '*(no text)*')
+            .setColor(0x57f287)
+            .setFooter({ text: 'Staff reply' })
+            .setTimestamp(new Date());
+          try {
+            await user.send({ embeds: [replyEmbed], files: attachmentUrls });
+            await msg.channel.send({ embeds: [replyEmbed], files: attachmentUrls });
+            await logMessage(ticket.id, msg.author, text, true);
+            try { await msg.delete(); } catch {}
+          } catch (e) {
+            await msg.channel.send(`Could not DM the user: ${e.message}`);
+          }
+        };
+
+        if (content.toLowerCase().startsWith('?reply')) {
+          let text = content.slice(6).trim();
+          if ((text.startsWith('"') && text.endsWith('"')) ||
+              (text.startsWith("'") && text.endsWith("'"))) {
+            text = text.slice(1, -1).trim();
+          }
+          if (!text && msg.attachments.size === 0) {
+            await msg.reply('Usage: `?reply <message>`');
+            return;
+          }
+          const files = [...msg.attachments.values()].map((a) => a.url);
+          await sendStaffReply(text, files);
+          return;
+        }
+
+        if (content.toLowerCase().startsWith('?close')) {
+          const reason = content.slice(6).trim();
+          const user = await client.users.fetch(ticket.user_discord_id).catch(() => null);
+          if (user) {
+            const closeEmbed = new EmbedBuilder()
+              .setTitle('Ticket closed')
+              .setDescription(reason ? `${cfg.close_message}\n\n**Reason:** ${reason}` : cfg.close_message)
+              .setColor(0xed4245)
+              .setTimestamp(new Date());
+            try { await user.send({ embeds: [closeEmbed] }); } catch {}
+          }
+          await db.from('tickets').update({
+            status: 'closed',
+            closed_at: new Date().toISOString(),
+            closed_by_discord_id: msg.author.id,
+            closed_by_username: msg.author.username ?? msg.author.tag ?? null,
+          }).eq('id', ticket.id);
+
+          // Post transcript link in log channel
+          if (cfg.log_channel_id) {
+            try {
+              const logCh = await msg.guild.channels.fetch(cfg.log_channel_id).catch(() => null);
+              if (logCh) {
+                const logEmbed = new EmbedBuilder()
+                  .setTitle('Ticket closed')
+                  .setColor(0xed4245)
+                  .addFields(
+                    { name: 'User', value: `<@${ticket.user_discord_id}>`, inline: true },
+                    { name: 'Closed by', value: `<@${msg.author.id}>`, inline: true },
+                    { name: 'Category', value: ticket.category_name || 'None', inline: true },
+                    { name: 'Reason', value: reason || '*(none)*' },
+                    { name: 'Transcript', value: transcriptUrl(ticket.id) },
+                  )
+                  .setTimestamp(new Date());
+                await logCh.send({ embeds: [logEmbed] });
+              }
+            } catch (e) { console.error(`[${ctx.botRow.id}] log post failed`, e); }
+          }
+
+          await msg.reply('Closing ticket in 5s…');
+          setTimeout(() => msg.channel.delete().catch(() => {}), 5000);
+          return;
+        }
+
+        if (!content.startsWith('?')) {
+          const files = [...msg.attachments.values()].map((a) => a.url);
+          await sendStaffReply(content, files);
+          return;
+        }
+      }
+    } catch (err) {
+      console.error(`[${ctx.botRow.id}] messageCreate`, err);
+    }
+  });
+
+  client.on('interactionCreate', async (interaction) => {
+    try {
+      if (!interaction.isStringSelectMenu()) return;
+      if (!interaction.customId.startsWith('cat:')) return;
+
+      const guildId = interaction.customId.slice(4);
+      const categoryId = interaction.values[0];
+
+      // Acknowledge immediately
+      try { await interaction.deferUpdate(); } catch (e) {
+        console.error(`[${ctx.botRow.id}] deferUpdate`, e);
+      }
+
+      const cfg = await getGuildConfig(ctx, guildId);
+      if (!cfg) {
+        try { await interaction.followUp({ content: 'This bot is no longer configured for that server.', ephemeral: true }); } catch {}
         return;
       }
       const guild = await client.guilds.fetch(cfg.guild_id).catch(() => null);
       if (!guild) {
-        await msg.reply('Modmail server unavailable.');
+        try { await interaction.followUp({ content: 'Server unavailable.', ephemeral: true }); } catch {}
         return;
       }
 
-      let ticket = await findOpenTicketByUser(msg.author.id);
-      let channel;
+      const { data: category, error: catErr } = await db
+        .from('ticket_categories').select('*').eq('id', categoryId).maybeSingle();
+      if (catErr) console.error(`[${ctx.botRow.id}] fetch category`, catErr);
 
-      if (ticket && ticket.channel_id) {
-        channel = await guild.channels.fetch(ticket.channel_id).catch(() => null);
-      }
+      const pending = ctx.pendingDMs.get(interaction.user.id);
+      if (pending?.timer) clearTimeout(pending.timer);
+      ctx.pendingDMs.delete(interaction.user.id);
 
-      const files = [...msg.attachments.values()].map((a) => a.url);
+      let ticket = await findOpenTicketByUser(ctx, interaction.user.id);
+      let channel = ticket?.channel_id
+        ? await guild.channels.fetch(ticket.channel_id).catch(() => null)
+        : null;
 
       if (!channel) {
-        // No open ticket — see if we should ask for a category first
-        const categories = await getCategories(cfg.guild_id);
-
-        if (categories.length > 0) {
-          // Already waiting on a selection? Just remind them.
-          if (pendingDMs.has(msg.author.id)) {
-            try { await msg.react('⌛'); } catch {}
-            return;
-          }
-          // Cache the original message and show the picker
-          const select = new StringSelectMenuBuilder()
-            .setCustomId(`cat:${cfg.guild_id}`)
-            .setPlaceholder('Choose a category…')
-            .addOptions(
-              categories.slice(0, 25).map((c) => ({
-                label: c.name.slice(0, 100),
-                description: c.description ? c.description.slice(0, 100) : undefined,
-                value: c.id,
-                emoji: c.emoji || undefined,
-              })),
-            );
-          const row = new ActionRowBuilder().addComponents(select);
-          const promptEmbed = new EmbedBuilder()
-            .setTitle('Open a ticket')
-            .setDescription('Pick the category that best fits your message. Your original message will be sent to staff once you choose.')
-            .setColor(0x5865f2);
-
-          await msg.author.send({ embeds: [promptEmbed], components: [row] });
-
-          // Cache pending message (auto-expire after 10 min)
-          const timer = setTimeout(() => pendingDMs.delete(msg.author.id), 10 * 60_000);
-          pendingDMs.set(msg.author.id, {
-            content: msg.content,
-            files,
-            cfg,
-            timer,
-          });
-          try { await msg.react('📋'); } catch {}
+        const created = await createTicketChannel(ctx, cfg, guild, interaction.user, category ?? null);
+        if (!created) {
+          try { await interaction.followUp({ content: 'Could not open a ticket. Try again in a moment.', ephemeral: true }); } catch {}
           return;
         }
-
-        // No categories configured — fall back to legacy direct creation
-        const created = await createTicketChannel(cfg, guild, msg.author, null);
-        if (!created) return;
         ticket = created.ticket;
         channel = created.channel;
       }
 
-      // Relay user's message into the channel
-      await relayUserMessageToChannel(channel, msg.author, msg.content, files);
-      await logMessage(ticket.id, msg.author, msg.content, false);
+      if (pending) {
+        await relayUserMessageToChannel(channel, interaction.user, pending.content, pending.files);
+        await logMessage(ticket.id, interaction.user, pending.content, false);
+      }
 
-      // Confirmation reaction
       try {
-        await msg.react(cfg.confirmation_emoji || '✅');
-      } catch {}
-      return;
-    }
-
-    // Guild channel = staff command
-    if (msg.channel.type === ChannelType.GuildText && msg.channel.parentId) {
-      const ticket = await findOpenTicketByChannel(msg.channel.id);
-      if (!ticket) return;
-      const cfg = await getGuildConfig(msg.guild.id);
-      if (!cfg) return;
-
-      // Staff role check
-      if (cfg.staff_role_id) {
-        const member = await msg.guild.members.fetch(msg.author.id).catch(() => null);
-        if (!member?.roles.cache.has(cfg.staff_role_id)) return;
+        const doneEmbed = new EmbedBuilder()
+          .setTitle('Ticket opened')
+          .setDescription(`Category: **${category?.emoji ? `${category.emoji} ` : ''}${category?.name ?? 'General'}**\n\nA staff member will be with you shortly. Keep replying here to send more messages.`)
+          .setColor(0x57f287);
+        await interaction.editReply({ embeds: [doneEmbed], components: [] });
+      } catch (e) {
+        console.error(`[${ctx.botRow.id}] editReply`, e);
+        try { await interaction.user.send({ content: '✅ Ticket opened. Keep replying here to send more messages.' }); } catch {}
       }
-
-      const content = msg.content.trim();
-
-      // Helper: relay staff text to user as embed, repost as embed in channel,
-      // delete the original staff message, and log it.
-      const sendStaffReply = async (text, attachmentUrls = []) => {
-        const user = await client.users.fetch(ticket.user_discord_id).catch(() => null);
-        if (!user) {
-          await msg.channel.send('Could not reach the user.');
-          return;
-        }
-        const replyEmbed = new EmbedBuilder()
-          .setAuthor({ name: msg.author.username, iconURL: msg.author.displayAvatarURL() })
-          .setDescription(text || '*(no text)*')
-          .setColor(0x57f287)
-          .setFooter({ text: 'Staff reply' })
-          .setTimestamp(new Date());
-        try {
-          await user.send({ embeds: [replyEmbed], files: attachmentUrls });
-          await msg.channel.send({ embeds: [replyEmbed], files: attachmentUrls });
-          await logMessage(ticket.id, msg.author, text, true);
-          try { await msg.delete(); } catch {}
-        } catch (e) {
-          await msg.channel.send(`Could not DM the user: ${e.message}`);
-        }
-      };
-
-      // ?reply <text>
-      if (content.toLowerCase().startsWith('?reply')) {
-        let text = content.slice(6).trim();
-        // Strip optional surrounding quotes: ?reply "hello"
-        if ((text.startsWith('"') && text.endsWith('"')) ||
-            (text.startsWith("'") && text.endsWith("'"))) {
-          text = text.slice(1, -1).trim();
-        }
-        if (!text && msg.attachments.size === 0) {
-          await msg.reply('Usage: `?reply <message>`');
-          return;
-        }
-        const files = [...msg.attachments.values()].map((a) => a.url);
-        await sendStaffReply(text, files);
-        return;
-      }
-
-      // ?close [reason]
-      if (content.toLowerCase().startsWith('?close')) {
-        const reason = content.slice(6).trim();
-        const user = await client.users.fetch(ticket.user_discord_id).catch(() => null);
-        if (user) {
-          const closeEmbed = new EmbedBuilder()
-            .setTitle('Ticket closed')
-            .setDescription(reason ? `${cfg.close_message}\n\n**Reason:** ${reason}` : cfg.close_message)
-            .setColor(0xed4245)
-            .setTimestamp(new Date());
-          try { await user.send({ embeds: [closeEmbed] }); } catch {}
-        }
-        await db.from('tickets').update({
-          status: 'closed',
-          closed_at: new Date().toISOString(),
-        }).eq('id', ticket.id);
-        await msg.reply('Closing ticket in 5s…');
-        setTimeout(() => msg.channel.delete().catch(() => {}), 5000);
-        return;
-      }
-
-      // Any other non-command staff message → auto-relay as embed
-      if (!content.startsWith('?')) {
-        const files = [...msg.attachments.values()].map((a) => a.url);
-        await sendStaffReply(content, files);
-        return;
-      }
-    }
-  } catch (err) {
-    console.error('messageCreate handler', err);
-  }
-});
-
-// ---------- Category select (DM picker) ----------
-client.on('interactionCreate', async (interaction) => {
-  try {
-    if (!interaction.isStringSelectMenu()) return;
-    if (!interaction.customId.startsWith('cat:')) return;
-
-    const guildId = interaction.customId.slice(4);
-    const categoryId = interaction.values[0];
-
-    await interaction.deferUpdate().catch(() => {});
-
-    const cfg = await getGuildConfig(guildId);
-    if (!cfg) return;
-    const guild = await client.guilds.fetch(cfg.guild_id).catch(() => null);
-    if (!guild) return;
-
-    const { data: category } = await db
-      .from('ticket_categories')
-      .select('*')
-      .eq('id', categoryId)
-      .maybeSingle();
-
-    const pending = pendingDMs.get(interaction.user.id);
-    if (pending?.timer) clearTimeout(pending.timer);
-    pendingDMs.delete(interaction.user.id);
-
-    let ticket = await findOpenTicketByUser(interaction.user.id);
-    let channel = ticket?.channel_id
-      ? await guild.channels.fetch(ticket.channel_id).catch(() => null)
-      : null;
-
-    if (!channel) {
-      const created = await createTicketChannel(cfg, guild, interaction.user, category ?? null);
-      if (!created) return;
-      ticket = created.ticket;
-      channel = created.channel;
-    }
-
-    if (pending) {
-      await relayUserMessageToChannel(channel, interaction.user, pending.content, pending.files);
-      await logMessage(ticket.id, interaction.user, pending.content, false);
-    }
-
-    try {
-      const doneEmbed = new EmbedBuilder()
-        .setTitle('Ticket opened')
-        .setDescription(`Category: **${category?.emoji ? `${category.emoji} ` : ''}${category?.name ?? 'General'}**\n\nA staff member will be with you shortly. Keep replying here to send more messages.`)
-        .setColor(0x57f287);
-      await interaction.editReply({ embeds: [doneEmbed], components: [] });
-    } catch {}
-  } catch (err) {
-    console.error('interactionCreate handler', err);
-  }
-});
-
-client.once('ready', () => {
-  console.log(`Logged in as ${client.user.tag}`);
-});
-
-// Don't crash the process — Railway treats exit as a deploy failure and
-// other bots/services on the same instance would go down too. Instead, log
-// and keep retrying every 30s so when the user fixes the issue (e.g. enables
-// privileged intents in the Discord dev portal) we reconnect automatically.
-process.on('unhandledRejection', (err) => {
-  console.error('[unhandledRejection]', err);
-});
-process.on('uncaughtException', (err) => {
-  console.error('[uncaughtException]', err);
-});
-
-client.on('error', (err) => {
-  console.error('[client error]', err);
-});
-client.on('shardError', (err) => {
-  console.error('[shard error]', err);
-});
-
-async function startWithRetry() {
-  while (true) {
-    try {
-      if (!botRow) await loadBotRow();
-      await client.login(botRow.bot_token);
-      return; // success
     } catch (err) {
-      const msg = err?.message || String(err);
-      console.error(`[startup] login failed: ${msg}`);
-      if (/disallowed intents/i.test(msg)) {
-        console.error('[startup] Enable "Message Content" and "Server Members" privileged intents in the Discord Developer Portal, then this will reconnect automatically.');
-      }
-      // Reset cached row so we re-read token in case it was rotated.
-      botRow = null;
-      try { client.destroy(); } catch {}
-      console.log('[startup] retrying in 30s…');
-      await new Promise((r) => setTimeout(r, 30_000));
+      console.error(`[${ctx.botRow.id}] interactionCreate`, err);
     }
+  });
+
+  client.on('error', (err) => console.error(`[${ctx.botRow.id}] client error`, err));
+  client.on('shardError', (err) => console.error(`[${ctx.botRow.id}] shard error`, err));
+
+  client.once('ready', () => {
+    ctx.status = 'ready';
+    console.log(`[${ctx.botRow.id}] logged in as ${client.user.tag}`);
+  });
+}
+
+async function startBot(row) {
+  const ctx = {
+    botRow: row,
+    client: null,
+    pendingDMs: new Map(),
+    status: 'starting',
+    retryAt: 0,
+  };
+  workers.set(row.id, ctx);
+
+  const client = new Client({
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,
+      GatewayIntentBits.DirectMessages,
+      GatewayIntentBits.GuildMembers,
+    ],
+    partials: [Partials.Channel, Partials.Message],
+  });
+  ctx.client = client;
+  attachHandlers(ctx);
+
+  try {
+    await client.login(row.bot_token);
+    console.log(`[${row.id}] login ok (${row.bot_name ?? 'unnamed'})`);
+  } catch (err) {
+    const m = err?.message || String(err);
+    console.error(`[${row.id}] login failed: ${m}`);
+    if (/disallowed intents/i.test(m)) {
+      console.error(`[${row.id}] Enable "Message Content" and "Server Members" privileged intents in the Discord Developer Portal.`);
+    }
+    try { client.destroy(); } catch {}
+    ctx.status = 'failed';
+    ctx.retryAt = Date.now() + 60_000; // back off failed bots for 60s
   }
 }
 
-startWithRetry();
+async function stopBot(id, reason = '') {
+  const w = workers.get(id);
+  if (!w) return;
+  w.status = 'stopping';
+  console.log(`[${id}] stopping ${reason}`);
+  try { await w.client?.destroy(); } catch {}
+  workers.delete(id);
+}
+
+async function syncBots() {
+  let q = db.from('bots').select('*');
+  if (BOT_ID) q = q.eq('id', BOT_ID);
+  const { data: rows, error } = await q;
+  if (error) { console.error('syncBots fetch', error); return; }
+
+  const seen = new Set();
+  for (const row of rows ?? []) {
+    seen.add(row.id);
+    if (!row.bot_token) continue;
+    const existing = workers.get(row.id);
+    if (!existing) {
+      console.log(`[manager] starting new bot ${row.id} (${row.bot_name ?? 'unnamed'})`);
+      startBot(row);
+    } else if (existing.status === 'failed' && Date.now() >= existing.retryAt) {
+      console.log(`[manager] retrying failed bot ${row.id}`);
+      workers.delete(row.id);
+      startBot(row);
+    } else if (existing.botRow.bot_token !== row.bot_token) {
+      console.log(`[manager] token changed for ${row.id}, restarting`);
+      await stopBot(row.id, 'token rotated');
+      startBot(row);
+    } else {
+      existing.botRow = row;
+    }
+  }
+
+  for (const id of [...workers.keys()]) {
+    if (!seen.has(id)) await stopBot(id, '(removed from db)');
+  }
+}
+
+process.on('unhandledRejection', (err) => console.error('[unhandledRejection]', err));
+process.on('uncaughtException', (err) => console.error('[uncaughtException]', err));
+
+console.log(`[manager] starting (TRANSCRIPT_BASE=${TRANSCRIPT_BASE}${BOT_ID ? `, BOT_ID=${BOT_ID}` : ', all bots'})`);
+syncBots();
+setInterval(syncBots, 5_000);

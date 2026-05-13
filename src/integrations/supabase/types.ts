@@ -258,6 +258,8 @@ export type Database = {
           category_name: string | null
           channel_id: string | null
           closed_at: string | null
+          closed_by_discord_id: string | null
+          closed_by_username: string | null
           created_at: string
           guild_id: string
           id: string
@@ -271,6 +273,8 @@ export type Database = {
           category_name?: string | null
           channel_id?: string | null
           closed_at?: string | null
+          closed_by_discord_id?: string | null
+          closed_by_username?: string | null
           created_at?: string
           guild_id: string
           id?: string
@@ -284,6 +288,8 @@ export type Database = {
           category_name?: string | null
           channel_id?: string | null
           closed_at?: string | null
+          closed_by_discord_id?: string | null
+          closed_by_username?: string | null
           created_at?: string
           guild_id?: string
           id?: string
