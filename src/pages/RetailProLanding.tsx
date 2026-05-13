@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Headphones, ShoppingBag, Sparkles } from "lucide-react";
+import { ArrowRight, Headphones, Mail, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import logo from "@/assets/retailpro-logo.jpg";
 
