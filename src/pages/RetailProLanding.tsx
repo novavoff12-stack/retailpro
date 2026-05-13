@@ -101,19 +101,23 @@ const RetailProLanding = () => {
                 </span>
               </a>
 
-              {/* Coming Soon */}
-              <div className="relative overflow-hidden p-8 rounded-2xl border border-dashed border-border bg-card/50">
-                <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-muted text-muted-foreground mb-5">
-                  <ShoppingBag className="h-5 w-5" />
+              {/* Modmail */}
+              <a
+                href="https://modmail.retailpro.space"
+                className="group relative overflow-hidden p-8 rounded-2xl border border-border bg-card hover:shadow-elegant transition-smooth hover:-translate-y-1"
+              >
+                <div className="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-gradient-accent text-accent-foreground mb-5 shadow-glow group-hover:scale-110 transition-smooth">
+                  <Mail className="h-5 w-5" />
                 </div>
-                <h3 className="text-2xl font-semibold mb-2">More coming soon</h3>
+                <h3 className="text-2xl font-semibold mb-2">Modmail</h3>
                 <p className="text-muted-foreground leading-relaxed mb-6">
-                  We're working on more products to power your Roblox retail experience. Join our Discord to follow updates.
+                  Turn member DMs into clean, private staff threads. A Discord modmail bot with slash commands, transcripts, and multi-guild support.
                 </p>
-                <span className="inline-flex items-center text-sm font-semibold text-muted-foreground">
-                  Stay tuned
+                <span className="inline-flex items-center text-sm font-semibold text-accent group-hover:gap-2 transition-smooth">
+                  Visit Modmail
+                  <ArrowRight className="ml-1 h-4 w-4 group-hover:translate-x-1 transition-smooth" />
                 </span>
-              </div>
+              </a>
             </div>
           </div>
         </section>
