@@ -161,6 +161,7 @@ const RetailProLanding = () => {
               <h4 className="font-semibold mb-3 text-sm">Products</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><a href={RETAILCONNECT_URL} className="hover:text-foreground transition-smooth">RetailConnect</a></li>
+                <li><a href="https://modmail.retailpro.space" className="hover:text-foreground transition-smooth">Modmail</a></li>
                 <li><a href="#products" className="hover:text-foreground transition-smooth">All products</a></li>
               </ul>
             </div>
