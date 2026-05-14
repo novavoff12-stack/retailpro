@@ -786,9 +786,13 @@ const Dashboard = () => {
             Railway bot deployment guide
           </a>.
         </p>
+        </>
+        )}
       </main>
     </div>
   );
 };
+
+export default Dashboard;
 
 export default Dashboard;
