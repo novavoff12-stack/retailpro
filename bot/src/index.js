@@ -173,6 +173,98 @@ async function relayUserMessageToChannel(channel, user, content, files) {
   await channel.send({ embeds: [userEmbed], files: files ?? [] });
 }
 
+// Ask the edge function for an AI reply; if confident, DM the user and post in the ticket channel.
+async function tryAiReply(ctx, cfg, ticket, channel, user, userMessage) {
+  const url = `${SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/ai-modmail-reply`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    },
+    body: JSON.stringify({
+      bot_id: ctx.botRow.id,
+      ticket_id: ticket.id,
+      user_message: userMessage ?? '',
+    }),
+  });
+  if (!res.ok) {
+    console.error(`[${ctx.botRow.id}] ai-modmail-reply HTTP ${res.status}`);
+    return;
+  }
+  const data = await res.json();
+  if (!data?.should_reply || !data?.reply) {
+    if (data?.reason) {
+      try {
+        await channel.send({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle('AI escalated to staff')
+              .setDescription(`*${data.reason}*`)
+              .setColor(0xfaa61a),
+          ],
+        });
+      } catch {}
+    }
+    return;
+  }
+
+  const aiEmbed = new EmbedBuilder()
+    .setAuthor({ name: 'AI Assistant' })
+    .setDescription(data.reply)
+    .setColor(0x9b59b6)
+    .setFooter({ text: 'Automated reply — staff will follow up if needed' })
+    .setTimestamp(new Date());
+  try { await user.send({ embeds: [aiEmbed] }); } catch {}
+  try { await channel.send({ embeds: [aiEmbed] }); } catch {}
+  await db.from('ticket_messages').insert({
+    ticket_id: ticket.id,
+    author_discord_id: 'ai',
+    author_username: 'AI Assistant',
+    content: data.reply,
+    is_staff: true,
+  });
+}
+
+// Cache messages from selected knowledge channels so the AI has context to draw from.
+async function scrapeKnowledgeChannels(ctx) {
+  try {
+    const { data: guilds } = await db
+      .from('guilds').select('guild_id, ai_knowledge_channel_ids')
+      .eq('bot_id', ctx.botRow.id);
+    for (const g of guilds ?? []) {
+      const channelIds = (g.ai_knowledge_channel_ids ?? []).slice(0, 4);
+      if (channelIds.length === 0) continue;
+      const guild = await ctx.client.guilds.fetch(g.guild_id).catch(() => null);
+      if (!guild) continue;
+      for (const cid of channelIds) {
+        const ch = await guild.channels.fetch(cid).catch(() => null);
+        if (!ch || !ch.isTextBased?.()) continue;
+        const messages = await ch.messages.fetch({ limit: 50 }).catch(() => null);
+        if (!messages) continue;
+        const rows = [...messages.values()]
+          .filter((m) => !m.author.bot && (m.content || '').trim())
+          .map((m) => ({
+            bot_id: ctx.botRow.id,
+            guild_id: g.guild_id,
+            channel_id: cid,
+            message_id: m.id,
+            author_username: m.author.username,
+            content: m.content.slice(0, 2000),
+            created_at: new Date(m.createdTimestamp).toISOString(),
+          }));
+        if (rows.length === 0) continue;
+        const { error } = await db
+          .from('ai_knowledge_messages')
+          .upsert(rows, { onConflict: 'channel_id,message_id', ignoreDuplicates: true });
+        if (error) console.error(`[${ctx.botRow.id}] knowledge upsert`, error);
+      }
+    }
+  } catch (e) {
+    console.error(`[${ctx.botRow.id}] scrapeKnowledgeChannels`, e);
+  }
+}
+
 // ========== Per-bot handlers ==========
 function attachHandlers(ctx) {
   const { client } = ctx;
@@ -245,6 +337,13 @@ function attachHandlers(ctx) {
         await relayUserMessageToChannel(channel, msg.author, msg.content, files);
         await logMessage(ticket.id, msg.author, msg.content, false);
         try { await msg.react(cfg.confirmation_emoji || '✅'); } catch {}
+
+        // Try AI auto-reply (if enabled & running) — only when last reply wasn't from staff
+        if (cfg.ai_enabled && cfg.ai_running) {
+          tryAiReply(ctx, cfg, ticket, channel, msg.author, msg.content).catch((e) =>
+            console.error(`[${ctx.botRow.id}] tryAiReply`, e)
+          );
+        }
         return;
       }
 
@@ -401,6 +500,11 @@ function attachHandlers(ctx) {
       if (pending) {
         await relayUserMessageToChannel(channel, interaction.user, pending.content, pending.files);
         await logMessage(ticket.id, interaction.user, pending.content, false);
+        if (cfg.ai_enabled && cfg.ai_running) {
+          tryAiReply(ctx, cfg, ticket, channel, interaction.user, pending.content).catch((e) =>
+            console.error(`[${ctx.botRow.id}] tryAiReply (pending)`, e)
+          );
+        }
       }
 
       try {
@@ -484,6 +588,16 @@ async function syncBots() {
   for (const row of rows ?? []) {
     seen.add(row.id);
     if (!row.bot_token) continue;
+
+    // Owner can pause the bot from the dashboard.
+    if (row.bot_running === false) {
+      if (workers.has(row.id)) {
+        console.log(`[manager] stopping ${row.id} (paused via dashboard)`);
+        await stopBot(row.id, '(paused)');
+      }
+      continue;
+    }
+
     const existing = workers.get(row.id);
     if (!existing) {
       console.log(`[manager] starting new bot ${row.id} (${row.bot_name ?? 'unnamed'})`);
@@ -506,9 +620,20 @@ async function syncBots() {
   }
 }
 
+// Periodically scrape selected knowledge channels for every running bot.
+async function scrapeAll() {
+  for (const ctx of workers.values()) {
+    if (ctx.status !== 'ready') continue;
+    await scrapeKnowledgeChannels(ctx);
+  }
+}
+
 process.on('unhandledRejection', (err) => console.error('[unhandledRejection]', err));
 process.on('uncaughtException', (err) => console.error('[uncaughtException]', err));
 
 console.log(`[manager] starting (TRANSCRIPT_BASE=${TRANSCRIPT_BASE}${BOT_ID ? `, BOT_ID=${BOT_ID}` : ', all bots'})`);
 syncBots();
 setInterval(syncBots, 5_000);
+setInterval(scrapeAll, 60_000);
+// Initial scrape after 20s so clients are ready
+setTimeout(scrapeAll, 20_000);

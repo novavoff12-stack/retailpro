@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
 import {
   LogOut,
   Bot as BotIcon,
@@ -28,6 +29,12 @@ import {
   Plus,
   Trash2,
   Tag,
+  Brain,
+  Power,
+  PlayCircle,
+  StopCircle,
+  FileText,
+  Settings2,
 } from "lucide-react";
 
 interface Bot {
@@ -37,6 +44,7 @@ interface Bot {
   bot_token: string;
   bot_name: string | null;
   status: string;
+  bot_running: boolean;
 }
 
 interface Guild {
@@ -50,7 +58,22 @@ interface Guild {
   welcome_message: string;
   close_message: string;
   confirmation_emoji: string;
+  ai_enabled: boolean;
+  ai_running: boolean;
+  ai_product_rules: string;
+  ai_knowledge_channel_ids: string[];
 }
+
+interface Ticket {
+  id: string;
+  user_discord_id: string;
+  category_name: string | null;
+  status: string;
+  opened_at: string;
+  closed_at: string | null;
+  closed_by_username: string | null;
+}
+
 
 interface TicketCategory {
   id: string;
@@ -104,6 +127,15 @@ const Dashboard = () => {
   const [newCatEmoji, setNewCatEmoji] = useState("");
   const [savingCat, setSavingCat] = useState(false);
 
+  // post-setup management view
+  const [editMode, setEditMode] = useState(false);
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [aiRunning, setAiRunning] = useState(true);
+  const [aiRules, setAiRules] = useState("");
+  const [aiChannels, setAiChannels] = useState<string[]>(["", "", "", ""]);
+  const [savingAi, setSavingAi] = useState(false);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+
   useEffect(() => {
     if (!loading && !user) navigate("/", { replace: true });
   }, [user, loading, navigate]);
@@ -132,15 +164,27 @@ const Dashboard = () => {
           setWelcomeMsg(g.welcome_message);
           setCloseMsg(g.close_message);
           setConfirmEmoji(g.confirmation_emoji);
+          setAiEnabled(!!g.ai_enabled);
+          setAiRunning(g.ai_running !== false);
+          setAiRules(g.ai_product_rules ?? "");
+          const chans = (g.ai_knowledge_channel_ids ?? []) as string[];
+          setAiChannels([0, 1, 2, 3].map((i) => chans[i] ?? ""));
 
-          const { data: cats } = await supabase
-            .from("ticket_categories")
-            .select("*")
-            .eq("bot_id", botRow.id)
-            .eq("guild_id", g.guild_id)
-            .order("sort_order", { ascending: true })
-            .order("name", { ascending: true });
+          const [{ data: cats }, { data: tks }] = await Promise.all([
+            supabase
+              .from("ticket_categories").select("*")
+              .eq("bot_id", botRow.id).eq("guild_id", g.guild_id)
+              .order("sort_order", { ascending: true })
+              .order("name", { ascending: true }),
+            supabase
+              .from("tickets")
+              .select("id,user_discord_id,category_name,status,opened_at,closed_at,closed_by_username")
+              .eq("bot_id", botRow.id).eq("guild_id", g.guild_id)
+              .order("opened_at", { ascending: false })
+              .limit(50),
+          ]);
           if (cats) setCategories(cats as TicketCategory[]);
+          if (tks) setTickets(tks as Ticket[]);
         }
       }
       setFetching(false);
@@ -271,6 +315,66 @@ const Dashboard = () => {
     setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   };
 
+  const handleSaveAi = async () => {
+    if (!bot || !guild) return;
+    setSavingAi(true);
+    const channels = aiChannels.map((c) => c.trim()).filter(Boolean).slice(0, 4);
+    const invalid = channels.find((c) => !/^\d{17,20}$/.test(c));
+    if (invalid) {
+      setSavingAi(false);
+      toast.error(`Channel ID "${invalid}" must be a 17–20 digit Discord snowflake`);
+      return;
+    }
+    const { data, error } = await supabase
+      .from("guilds")
+      .update({
+        ai_enabled: aiEnabled,
+        ai_running: aiRunning,
+        ai_product_rules: aiRules,
+        ai_knowledge_channel_ids: channels,
+      })
+      .eq("id", guild.id)
+      .select()
+      .single();
+    setSavingAi(false);
+    if (error) return toast.error(error.message);
+    setGuild(data as Guild);
+    toast.success("AI settings saved");
+  };
+
+  const toggleAiRunning = async (next: boolean) => {
+    if (!guild) return;
+    const { data, error } = await supabase
+      .from("guilds").update({ ai_running: next })
+      .eq("id", guild.id).select().single();
+    if (error) return toast.error(error.message);
+    setGuild(data as Guild);
+    setAiRunning(next);
+    toast.success(next ? "AI started" : "AI stopped");
+  };
+
+  const toggleBotRunning = async (next: boolean) => {
+    if (!bot) return;
+    const { data, error } = await supabase
+      .from("bots").update({ bot_running: next })
+      .eq("id", bot.id).select().single();
+    if (error) return toast.error(error.message);
+    setBot(data as Bot);
+    toast.success(next ? "Bot starting…" : "Bot stopping…");
+  };
+
+  const restartBot = async () => {
+    if (!bot) return;
+    await supabase.from("bots").update({ bot_running: false }).eq("id", bot.id);
+    setTimeout(async () => {
+      const { data } = await supabase
+        .from("bots").update({ bot_running: true })
+        .eq("id", bot.id).select().single();
+      if (data) setBot(data as Bot);
+    }, 6000);
+    toast.success("Restarting bot — back online in ~10s");
+  };
+
   const inviteUrl = bot
     ? `https://discord.com/oauth2/authorize?client_id=${bot.application_id}&scope=bot+applications.commands&permissions=534723950672`
     : "";
@@ -322,6 +426,36 @@ const Dashboard = () => {
       </header>
 
       <main className="container mx-auto py-10 max-w-4xl space-y-8 px-4">
+        {guildConfigured && isReady && !editMode ? (
+          <ManagementView
+            bot={bot!}
+            guild={guild!}
+            tickets={tickets}
+            categories={categories}
+            aiEnabled={aiEnabled}
+            setAiEnabled={setAiEnabled}
+            aiRunning={aiRunning}
+            aiRules={aiRules}
+            setAiRules={setAiRules}
+            aiChannels={aiChannels}
+            setAiChannels={setAiChannels}
+            savingAi={savingAi}
+            onSaveAi={handleSaveAi}
+            onToggleAi={toggleAiRunning}
+            onToggleBot={toggleBotRunning}
+            onRestartBot={restartBot}
+            onEditSetup={() => setEditMode(true)}
+          />
+        ) : (
+        <>
+        {editMode && guildConfigured && isReady && (
+          <div className="flex items-center justify-between rounded-lg border border-border bg-secondary/30 p-3">
+            <span className="text-sm text-muted-foreground">You're editing your setup.</span>
+            <Button variant="outline" size="sm" onClick={() => setEditMode(false)}>
+              <ArrowRight className="mr-2 h-4 w-4 rotate-180" /> Back to dashboard
+            </Button>
+          </div>
+        )}
         <section>
           <div className="flex items-center gap-2 mb-3">
             <Sparkles className="h-4 w-4 text-accent" />
@@ -652,9 +786,249 @@ const Dashboard = () => {
             Railway bot deployment guide
           </a>.
         </p>
+        </>
+        )}
       </main>
     </div>
   );
 };
 
 export default Dashboard;
+
+interface ManagementViewProps {
+  bot: Bot;
+  guild: Guild;
+  tickets: Ticket[];
+  categories: TicketCategory[];
+  aiEnabled: boolean;
+  setAiEnabled: (v: boolean) => void;
+  aiRunning: boolean;
+  aiRules: string;
+  setAiRules: (v: string) => void;
+  aiChannels: string[];
+  setAiChannels: (v: string[]) => void;
+  savingAi: boolean;
+  onSaveAi: () => void;
+  onToggleAi: (next: boolean) => void;
+  onToggleBot: (next: boolean) => void;
+  onRestartBot: () => void;
+  onEditSetup: () => void;
+}
+
+function ManagementView({
+  bot, guild, tickets, categories,
+  aiEnabled, setAiEnabled, aiRunning, aiRules, setAiRules,
+  aiChannels, setAiChannels, savingAi, onSaveAi,
+  onToggleAi, onToggleBot, onRestartBot, onEditSetup,
+}: ManagementViewProps) {
+  const botRunning = bot.bot_running !== false;
+  const openTickets = tickets.filter((t) => t.status === "open").length;
+
+  return (
+    <div className="space-y-8">
+      <section className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="h-4 w-4 text-accent" />
+            <span className="text-sm font-medium text-accent">Live</span>
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
+            {bot.bot_name ?? "Your Modmail bot"}
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            {guild.guild_name ?? guild.guild_id} · {categories.length} categor{categories.length === 1 ? "y" : "ies"} · {openTickets} open ticket{openTickets === 1 ? "" : "s"}
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={onEditSetup}>
+          <Settings2 className="h-4 w-4 mr-2" /> Edit setup
+        </Button>
+      </section>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Power className="h-5 w-5" /> Bot controls
+              </CardTitle>
+              <CardDescription>Stop, restart, or pause AI without touching Discord.</CardDescription>
+            </div>
+            <Badge variant="outline" className="gap-1.5">
+              <span className={`h-1.5 w-1.5 rounded-full ${botRunning ? "bg-emerald-500" : "bg-muted-foreground"}`} />
+              {botRunning ? "Bot online" : "Bot stopped"}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="grid sm:grid-cols-2 gap-4">
+          <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-3">
+            <div className="font-medium text-sm flex items-center gap-2">
+              <BotIcon className="h-4 w-4" /> Discord bot
+            </div>
+            <p className="text-xs text-muted-foreground">Disconnects/connects the bot from Discord. Tickets won't be relayed while stopped.</p>
+            <div className="flex gap-2 flex-wrap">
+              {botRunning ? (
+                <Button size="sm" variant="destructive" onClick={() => onToggleBot(false)}>
+                  <StopCircle className="h-4 w-4 mr-2" /> Stop bot
+                </Button>
+              ) : (
+                <Button size="sm" onClick={() => onToggleBot(true)}>
+                  <PlayCircle className="h-4 w-4 mr-2" /> Start bot
+                </Button>
+              )}
+              <Button size="sm" variant="outline" onClick={onRestartBot} disabled={!botRunning}>
+                <RefreshCcw className="h-4 w-4 mr-2" /> Restart
+              </Button>
+            </div>
+          </div>
+          <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-3">
+            <div className="font-medium text-sm flex items-center gap-2">
+              <Brain className="h-4 w-4" /> AI auto-reply
+            </div>
+            <p className="text-xs text-muted-foreground">Pauses the AI without disconnecting the bot. Staff still receive tickets.</p>
+            <div className="flex gap-2 flex-wrap">
+              {aiRunning ? (
+                <Button size="sm" variant="destructive" onClick={() => onToggleAi(false)}>
+                  <StopCircle className="h-4 w-4 mr-2" /> Stop AI
+                </Button>
+              ) : (
+                <Button size="sm" onClick={() => onToggleAi(true)}>
+                  <PlayCircle className="h-4 w-4 mr-2" /> Start AI
+                </Button>
+              )}
+              <Badge variant="outline" className="gap-1.5">
+                <span className={`h-1.5 w-1.5 rounded-full ${aiEnabled && aiRunning ? "bg-emerald-500" : "bg-muted-foreground"}`} />
+                {aiEnabled ? (aiRunning ? "Active" : "Paused") : "Disabled"}
+              </Badge>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Brain className="h-5 w-5" /> AI support
+          </CardTitle>
+          <CardDescription>
+            The AI tries to answer customers before staff is pinged. It learns from product rules + the channels you choose below.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="flex items-center justify-between rounded-lg border border-border bg-secondary/30 p-3">
+            <div>
+              <Label className="cursor-pointer">Enable AI auto-reply</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">When on, every new user message in a ticket is checked by the AI first.</p>
+            </div>
+            <Switch checked={aiEnabled} onCheckedChange={setAiEnabled} />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="aiRules">Product rules &amp; FAQ</Label>
+            <Textarea
+              id="aiRules"
+              value={aiRules}
+              onChange={(e) => setAiRules(e.target.value)}
+              placeholder={"E.g.\n- Refunds within 14 days only.\n- Support hours: Mon–Fri 9am–6pm CET.\n- Shipping to EU + UK only.\n- Common product FAQ goes here…"}
+              rows={8}
+              className="font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">The AI will only answer using this text + the channel knowledge below. Otherwise it escalates to staff.</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Knowledge channels (up to 4)</Label>
+            <p className="text-xs text-muted-foreground">
+              Paste channel IDs the AI may read for context (e.g. an #faq, #announcements, or #product-docs channel). Recent messages are pulled every minute.
+            </p>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {aiChannels.map((c, i) => (
+                <Input
+                  key={i}
+                  value={c}
+                  onChange={(e) => {
+                    const next = [...aiChannels];
+                    next[i] = e.target.value;
+                    setAiChannels(next);
+                  }}
+                  placeholder={`Channel ${i + 1} ID`}
+                  inputMode="numeric"
+                  className="font-mono text-xs"
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <Button onClick={onSaveAi} disabled={savingAi}>
+              {savingAi ? "Saving…" : "Save AI settings"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" /> Recent tickets &amp; transcripts
+          </CardTitle>
+          <CardDescription>Click any ticket to read the full transcript.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {tickets.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No tickets yet.</p>
+          ) : (
+            <div className="divide-y divide-border">
+              {tickets.map((t) => (
+                <a
+                  key={t.id}
+                  href={`/transcript/id/${t.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-between gap-3 py-3 hover:bg-secondary/40 px-2 -mx-2 rounded-md transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">
+                      {t.category_name ?? "General"} · <span className="text-muted-foreground font-normal">{t.user_discord_id}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Opened {new Date(t.opened_at).toLocaleString()}
+                      {t.closed_at && <> · closed by {t.closed_by_username ?? "—"}</>}
+                    </div>
+                  </div>
+                  <Badge variant={t.status === "open" ? "default" : "outline"} className="shrink-0">
+                    {t.status}
+                  </Badge>
+                </a>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Server className="h-5 w-5" /> Server settings
+          </CardTitle>
+          <CardDescription>Quick reference. Use "Edit setup" to change.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid sm:grid-cols-2 gap-3 text-sm">
+          <Field label="Server ID" value={guild.guild_id} mono />
+          <Field label="Staff role ID" value={guild.staff_role_id ?? "—"} mono />
+          <Field label="Modmail category" value={guild.modmail_category_id ?? "—"} mono />
+          <Field label="Log channel" value={guild.log_channel_id ?? "—"} mono />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="rounded-lg border border-border bg-secondary/30 p-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className={`mt-0.5 ${mono ? "font-mono text-xs" : "text-sm"} break-all`}>{value}</div>
+    </div>
+  );
+}
+

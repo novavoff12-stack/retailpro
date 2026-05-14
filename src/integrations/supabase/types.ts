@@ -14,11 +14,78 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_knowledge_messages: {
+        Row: {
+          author_username: string | null
+          bot_id: string
+          channel_id: string
+          content: string | null
+          created_at: string
+          guild_id: string
+          id: string
+          message_id: string
+        }
+        Insert: {
+          author_username?: string | null
+          bot_id: string
+          channel_id: string
+          content?: string | null
+          created_at?: string
+          guild_id: string
+          id?: string
+          message_id: string
+        }
+        Update: {
+          author_username?: string | null
+          bot_id?: string
+          channel_id?: string
+          content?: string | null
+          created_at?: string
+          guild_id?: string
+          id?: string
+          message_id?: string
+        }
+        Relationships: []
+      }
+      ai_replies: {
+        Row: {
+          ai_reply: string | null
+          bot_id: string
+          created_at: string
+          escalated: boolean
+          id: string
+          reason: string | null
+          ticket_id: string
+          user_message: string | null
+        }
+        Insert: {
+          ai_reply?: string | null
+          bot_id: string
+          created_at?: string
+          escalated?: boolean
+          id?: string
+          reason?: string | null
+          ticket_id: string
+          user_message?: string | null
+        }
+        Update: {
+          ai_reply?: string | null
+          bot_id?: string
+          created_at?: string
+          escalated?: boolean
+          id?: string
+          reason?: string | null
+          ticket_id?: string
+          user_message?: string | null
+        }
+        Relationships: []
+      }
       bots: {
         Row: {
           application_id: string
           avatar_url: string | null
           bot_name: string | null
+          bot_running: boolean
           bot_token: string
           created_at: string
           id: string
@@ -31,6 +98,7 @@ export type Database = {
           application_id: string
           avatar_url?: string | null
           bot_name?: string | null
+          bot_running?: boolean
           bot_token: string
           created_at?: string
           id?: string
@@ -43,6 +111,7 @@ export type Database = {
           application_id?: string
           avatar_url?: string | null
           bot_name?: string | null
+          bot_running?: boolean
           bot_token?: string
           created_at?: string
           id?: string
@@ -55,6 +124,10 @@ export type Database = {
       }
       guilds: {
         Row: {
+          ai_enabled: boolean
+          ai_knowledge_channel_ids: string[]
+          ai_product_rules: string
+          ai_running: boolean
           bot_id: string
           close_message: string
           confirmation_emoji: string
@@ -69,6 +142,10 @@ export type Database = {
           welcome_message: string
         }
         Insert: {
+          ai_enabled?: boolean
+          ai_knowledge_channel_ids?: string[]
+          ai_product_rules?: string
+          ai_running?: boolean
           bot_id: string
           close_message?: string
           confirmation_emoji?: string
@@ -83,6 +160,10 @@ export type Database = {
           welcome_message?: string
         }
         Update: {
+          ai_enabled?: boolean
+          ai_knowledge_channel_ids?: string[]
+          ai_product_rules?: string
+          ai_running?: boolean
           bot_id?: string
           close_message?: string
           confirmation_emoji?: string
