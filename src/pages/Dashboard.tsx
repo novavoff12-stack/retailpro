@@ -375,6 +375,7 @@ const Dashboard = () => {
     toast.success("Restarting bot — back online in ~10s");
   };
 
+  const inviteUrl = bot
     ? `https://discord.com/oauth2/authorize?client_id=${bot.application_id}&scope=bot+applications.commands&permissions=534723950672`
     : "";
 
