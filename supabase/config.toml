@@ -2,3 +2,6 @@ project_id = "wgubtalkareywkwitktb"
 
 [functions.transcript]
 verify_jwt = false
+
+[functions.ai-modmail-reply]
+verify_jwt = false
