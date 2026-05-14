@@ -173,6 +173,98 @@ async function relayUserMessageToChannel(channel, user, content, files) {
   await channel.send({ embeds: [userEmbed], files: files ?? [] });
 }
 
+// Ask the edge function for an AI reply; if confident, DM the user and post in the ticket channel.
+async function tryAiReply(ctx, cfg, ticket, channel, user, userMessage) {
+  const url = `${SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/ai-modmail-reply`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    },
+    body: JSON.stringify({
+      bot_id: ctx.botRow.id,
+      ticket_id: ticket.id,
+      user_message: userMessage ?? '',
+    }),
+  });
+  if (!res.ok) {
+    console.error(`[${ctx.botRow.id}] ai-modmail-reply HTTP ${res.status}`);
+    return;
+  }
+  const data = await res.json();
+  if (!data?.should_reply || !data?.reply) {
+    if (data?.reason) {
+      try {
+        await channel.send({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle('AI escalated to staff')
+              .setDescription(`*${data.reason}*`)
+              .setColor(0xfaa61a),
+          ],
+        });
+      } catch {}
+    }
+    return;
+  }
+
+  const aiEmbed = new EmbedBuilder()
+    .setAuthor({ name: 'AI Assistant' })
+    .setDescription(data.reply)
+    .setColor(0x9b59b6)
+    .setFooter({ text: 'Automated reply — staff will follow up if needed' })
+    .setTimestamp(new Date());
+  try { await user.send({ embeds: [aiEmbed] }); } catch {}
+  try { await channel.send({ embeds: [aiEmbed] }); } catch {}
+  await db.from('ticket_messages').insert({
+    ticket_id: ticket.id,
+    author_discord_id: 'ai',
+    author_username: 'AI Assistant',
+    content: data.reply,
+    is_staff: true,
+  });
+}
+
+// Cache messages from selected knowledge channels so the AI has context to draw from.
+async function scrapeKnowledgeChannels(ctx) {
+  try {
+    const { data: guilds } = await db
+      .from('guilds').select('guild_id, ai_knowledge_channel_ids')
+      .eq('bot_id', ctx.botRow.id);
+    for (const g of guilds ?? []) {
+      const channelIds = (g.ai_knowledge_channel_ids ?? []).slice(0, 4);
+      if (channelIds.length === 0) continue;
+      const guild = await ctx.client.guilds.fetch(g.guild_id).catch(() => null);
+      if (!guild) continue;
+      for (const cid of channelIds) {
+        const ch = await guild.channels.fetch(cid).catch(() => null);
+        if (!ch || !ch.isTextBased?.()) continue;
+        const messages = await ch.messages.fetch({ limit: 50 }).catch(() => null);
+        if (!messages) continue;
+        const rows = [...messages.values()]
+          .filter((m) => !m.author.bot && (m.content || '').trim())
+          .map((m) => ({
+            bot_id: ctx.botRow.id,
+            guild_id: g.guild_id,
+            channel_id: cid,
+            message_id: m.id,
+            author_username: m.author.username,
+            content: m.content.slice(0, 2000),
+            created_at: new Date(m.createdTimestamp).toISOString(),
+          }));
+        if (rows.length === 0) continue;
+        const { error } = await db
+          .from('ai_knowledge_messages')
+          .upsert(rows, { onConflict: 'channel_id,message_id', ignoreDuplicates: true });
+        if (error) console.error(`[${ctx.botRow.id}] knowledge upsert`, error);
+      }
+    }
+  } catch (e) {
+    console.error(`[${ctx.botRow.id}] scrapeKnowledgeChannels`, e);
+  }
+}
+
 // ========== Per-bot handlers ==========
 function attachHandlers(ctx) {
   const { client } = ctx;
