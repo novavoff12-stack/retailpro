@@ -44,6 +44,34 @@ interface Bot {
   bot_token: string;
   bot_name: string | null;
   status: string;
+  bot_running: boolean;
+}
+
+interface Guild {
+  id: string;
+  bot_id: string;
+  guild_id: string;
+  guild_name: string | null;
+  modmail_category_id: string | null;
+  staff_role_id: string | null;
+  log_channel_id: string | null;
+  welcome_message: string;
+  close_message: string;
+  confirmation_emoji: string;
+  ai_enabled: boolean;
+  ai_running: boolean;
+  ai_product_rules: string;
+  ai_knowledge_channel_ids: string[];
+}
+
+interface Ticket {
+  id: string;
+  user_discord_id: string;
+  category_name: string | null;
+  status: string;
+  opened_at: string;
+  closed_at: string | null;
+  closed_by_username: string | null;
 }
 
 interface Guild {
