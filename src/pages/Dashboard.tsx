@@ -74,18 +74,6 @@ interface Ticket {
   closed_by_username: string | null;
 }
 
-interface Guild {
-  id: string;
-  bot_id: string;
-  guild_id: string;
-  guild_name: string | null;
-  modmail_category_id: string | null;
-  staff_role_id: string | null;
-  log_channel_id: string | null;
-  welcome_message: string;
-  close_message: string;
-  confirmation_emoji: string;
-}
 
 interface TicketCategory {
   id: string;
