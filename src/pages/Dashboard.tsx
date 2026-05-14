@@ -426,6 +426,36 @@ const Dashboard = () => {
       </header>
 
       <main className="container mx-auto py-10 max-w-4xl space-y-8 px-4">
+        {guildConfigured && isReady && !editMode ? (
+          <ManagementView
+            bot={bot!}
+            guild={guild!}
+            tickets={tickets}
+            categories={categories}
+            aiEnabled={aiEnabled}
+            setAiEnabled={setAiEnabled}
+            aiRunning={aiRunning}
+            aiRules={aiRules}
+            setAiRules={setAiRules}
+            aiChannels={aiChannels}
+            setAiChannels={setAiChannels}
+            savingAi={savingAi}
+            onSaveAi={handleSaveAi}
+            onToggleAi={toggleAiRunning}
+            onToggleBot={toggleBotRunning}
+            onRestartBot={restartBot}
+            onEditSetup={() => setEditMode(true)}
+          />
+        ) : (
+        <>
+        {editMode && guildConfigured && isReady && (
+          <div className="flex items-center justify-between rounded-lg border border-border bg-secondary/30 p-3">
+            <span className="text-sm text-muted-foreground">You're editing your setup.</span>
+            <Button variant="outline" size="sm" onClick={() => setEditMode(false)}>
+              <ArrowRight className="mr-2 h-4 w-4 rotate-180" /> Back to dashboard
+            </Button>
+          </div>
+        )}
         <section>
           <div className="flex items-center gap-2 mb-3">
             <Sparkles className="h-4 w-4 text-accent" />
