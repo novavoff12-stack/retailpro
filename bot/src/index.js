@@ -588,6 +588,16 @@ async function syncBots() {
   for (const row of rows ?? []) {
     seen.add(row.id);
     if (!row.bot_token) continue;
+
+    // Owner can pause the bot from the dashboard.
+    if (row.bot_running === false) {
+      if (workers.has(row.id)) {
+        console.log(`[manager] stopping ${row.id} (paused via dashboard)`);
+        await stopBot(row.id, '(paused)');
+      }
+      continue;
+    }
+
     const existing = workers.get(row.id);
     if (!existing) {
       console.log(`[manager] starting new bot ${row.id} (${row.bot_name ?? 'unnamed'})`);
@@ -607,6 +617,14 @@ async function syncBots() {
 
   for (const id of [...workers.keys()]) {
     if (!seen.has(id)) await stopBot(id, '(removed from db)');
+  }
+}
+
+// Periodically scrape selected knowledge channels for every running bot.
+async function scrapeAll() {
+  for (const ctx of workers.values()) {
+    if (ctx.status !== 'ready') continue;
+    await scrapeKnowledgeChannels(ctx);
   }
 }
 
