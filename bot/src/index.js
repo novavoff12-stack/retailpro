@@ -245,6 +245,13 @@ function attachHandlers(ctx) {
         await relayUserMessageToChannel(channel, msg.author, msg.content, files);
         await logMessage(ticket.id, msg.author, msg.content, false);
         try { await msg.react(cfg.confirmation_emoji || '✅'); } catch {}
+
+        // Try AI auto-reply (if enabled & running) — only when last reply wasn't from staff
+        if (cfg.ai_enabled && cfg.ai_running) {
+          tryAiReply(ctx, cfg, ticket, channel, msg.author, msg.content).catch((e) =>
+            console.error(`[${ctx.botRow.id}] tryAiReply`, e)
+          );
+        }
         return;
       }
 
