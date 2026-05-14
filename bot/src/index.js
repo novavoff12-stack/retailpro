@@ -634,3 +634,6 @@ process.on('uncaughtException', (err) => console.error('[uncaughtException]', er
 console.log(`[manager] starting (TRANSCRIPT_BASE=${TRANSCRIPT_BASE}${BOT_ID ? `, BOT_ID=${BOT_ID}` : ', all bots'})`);
 syncBots();
 setInterval(syncBots, 5_000);
+setInterval(scrapeAll, 60_000);
+// Initial scrape after 20s so clients are ready
+setTimeout(scrapeAll, 20_000);
