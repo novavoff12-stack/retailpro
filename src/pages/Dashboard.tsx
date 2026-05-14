@@ -795,4 +795,240 @@ const Dashboard = () => {
 
 export default Dashboard;
 
-export default Dashboard;
+interface ManagementViewProps {
+  bot: Bot;
+  guild: Guild;
+  tickets: Ticket[];
+  categories: TicketCategory[];
+  aiEnabled: boolean;
+  setAiEnabled: (v: boolean) => void;
+  aiRunning: boolean;
+  aiRules: string;
+  setAiRules: (v: string) => void;
+  aiChannels: string[];
+  setAiChannels: (v: string[]) => void;
+  savingAi: boolean;
+  onSaveAi: () => void;
+  onToggleAi: (next: boolean) => void;
+  onToggleBot: (next: boolean) => void;
+  onRestartBot: () => void;
+  onEditSetup: () => void;
+}
+
+function ManagementView({
+  bot, guild, tickets, categories,
+  aiEnabled, setAiEnabled, aiRunning, aiRules, setAiRules,
+  aiChannels, setAiChannels, savingAi, onSaveAi,
+  onToggleAi, onToggleBot, onRestartBot, onEditSetup,
+}: ManagementViewProps) {
+  const botRunning = bot.bot_running !== false;
+  const openTickets = tickets.filter((t) => t.status === "open").length;
+
+  return (
+    <div className="space-y-8">
+      <section className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="h-4 w-4 text-accent" />
+            <span className="text-sm font-medium text-accent">Live</span>
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
+            {bot.bot_name ?? "Your Modmail bot"}
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            {guild.guild_name ?? guild.guild_id} · {categories.length} categor{categories.length === 1 ? "y" : "ies"} · {openTickets} open ticket{openTickets === 1 ? "" : "s"}
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={onEditSetup}>
+          <Settings2 className="h-4 w-4 mr-2" /> Edit setup
+        </Button>
+      </section>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Power className="h-5 w-5" /> Bot controls
+              </CardTitle>
+              <CardDescription>Stop, restart, or pause AI without touching Discord.</CardDescription>
+            </div>
+            <Badge variant="outline" className="gap-1.5">
+              <span className={`h-1.5 w-1.5 rounded-full ${botRunning ? "bg-emerald-500" : "bg-muted-foreground"}`} />
+              {botRunning ? "Bot online" : "Bot stopped"}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="grid sm:grid-cols-2 gap-4">
+          <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-3">
+            <div className="font-medium text-sm flex items-center gap-2">
+              <BotIcon className="h-4 w-4" /> Discord bot
+            </div>
+            <p className="text-xs text-muted-foreground">Disconnects/connects the bot from Discord. Tickets won't be relayed while stopped.</p>
+            <div className="flex gap-2 flex-wrap">
+              {botRunning ? (
+                <Button size="sm" variant="destructive" onClick={() => onToggleBot(false)}>
+                  <StopCircle className="h-4 w-4 mr-2" /> Stop bot
+                </Button>
+              ) : (
+                <Button size="sm" onClick={() => onToggleBot(true)}>
+                  <PlayCircle className="h-4 w-4 mr-2" /> Start bot
+                </Button>
+              )}
+              <Button size="sm" variant="outline" onClick={onRestartBot} disabled={!botRunning}>
+                <RefreshCcw className="h-4 w-4 mr-2" /> Restart
+              </Button>
+            </div>
+          </div>
+          <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-3">
+            <div className="font-medium text-sm flex items-center gap-2">
+              <Brain className="h-4 w-4" /> AI auto-reply
+            </div>
+            <p className="text-xs text-muted-foreground">Pauses the AI without disconnecting the bot. Staff still receive tickets.</p>
+            <div className="flex gap-2 flex-wrap">
+              {aiRunning ? (
+                <Button size="sm" variant="destructive" onClick={() => onToggleAi(false)}>
+                  <StopCircle className="h-4 w-4 mr-2" /> Stop AI
+                </Button>
+              ) : (
+                <Button size="sm" onClick={() => onToggleAi(true)}>
+                  <PlayCircle className="h-4 w-4 mr-2" /> Start AI
+                </Button>
+              )}
+              <Badge variant="outline" className="gap-1.5">
+                <span className={`h-1.5 w-1.5 rounded-full ${aiEnabled && aiRunning ? "bg-emerald-500" : "bg-muted-foreground"}`} />
+                {aiEnabled ? (aiRunning ? "Active" : "Paused") : "Disabled"}
+              </Badge>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Brain className="h-5 w-5" /> AI support
+          </CardTitle>
+          <CardDescription>
+            The AI tries to answer customers before staff is pinged. It learns from product rules + the channels you choose below.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="flex items-center justify-between rounded-lg border border-border bg-secondary/30 p-3">
+            <div>
+              <Label className="cursor-pointer">Enable AI auto-reply</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">When on, every new user message in a ticket is checked by the AI first.</p>
+            </div>
+            <Switch checked={aiEnabled} onCheckedChange={setAiEnabled} />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="aiRules">Product rules &amp; FAQ</Label>
+            <Textarea
+              id="aiRules"
+              value={aiRules}
+              onChange={(e) => setAiRules(e.target.value)}
+              placeholder={"E.g.\n- Refunds within 14 days only.\n- Support hours: Mon–Fri 9am–6pm CET.\n- Shipping to EU + UK only.\n- Common product FAQ goes here…"}
+              rows={8}
+              className="font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">The AI will only answer using this text + the channel knowledge below. Otherwise it escalates to staff.</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Knowledge channels (up to 4)</Label>
+            <p className="text-xs text-muted-foreground">
+              Paste channel IDs the AI may read for context (e.g. an #faq, #announcements, or #product-docs channel). Recent messages are pulled every minute.
+            </p>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {aiChannels.map((c, i) => (
+                <Input
+                  key={i}
+                  value={c}
+                  onChange={(e) => {
+                    const next = [...aiChannels];
+                    next[i] = e.target.value;
+                    setAiChannels(next);
+                  }}
+                  placeholder={`Channel ${i + 1} ID`}
+                  inputMode="numeric"
+                  className="font-mono text-xs"
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <Button onClick={onSaveAi} disabled={savingAi}>
+              {savingAi ? "Saving…" : "Save AI settings"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" /> Recent tickets &amp; transcripts
+          </CardTitle>
+          <CardDescription>Click any ticket to read the full transcript.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {tickets.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No tickets yet.</p>
+          ) : (
+            <div className="divide-y divide-border">
+              {tickets.map((t) => (
+                <a
+                  key={t.id}
+                  href={`/transcript/id/${t.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-between gap-3 py-3 hover:bg-secondary/40 px-2 -mx-2 rounded-md transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">
+                      {t.category_name ?? "General"} · <span className="text-muted-foreground font-normal">{t.user_discord_id}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Opened {new Date(t.opened_at).toLocaleString()}
+                      {t.closed_at && <> · closed by {t.closed_by_username ?? "—"}</>}
+                    </div>
+                  </div>
+                  <Badge variant={t.status === "open" ? "default" : "outline"} className="shrink-0">
+                    {t.status}
+                  </Badge>
+                </a>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Server className="h-5 w-5" /> Server settings
+          </CardTitle>
+          <CardDescription>Quick reference. Use "Edit setup" to change.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid sm:grid-cols-2 gap-3 text-sm">
+          <Field label="Server ID" value={guild.guild_id} mono />
+          <Field label="Staff role ID" value={guild.staff_role_id ?? "—"} mono />
+          <Field label="Modmail category" value={guild.modmail_category_id ?? "—"} mono />
+          <Field label="Log channel" value={guild.log_channel_id ?? "—"} mono />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="rounded-lg border border-border bg-secondary/30 p-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className={`mt-0.5 ${mono ? "font-mono text-xs" : "text-sm"} break-all`}>{value}</div>
+    </div>
+  );
+}
+
