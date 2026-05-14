@@ -127,6 +127,15 @@ const Dashboard = () => {
   const [newCatEmoji, setNewCatEmoji] = useState("");
   const [savingCat, setSavingCat] = useState(false);
 
+  // post-setup management view
+  const [editMode, setEditMode] = useState(false);
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [aiRunning, setAiRunning] = useState(true);
+  const [aiRules, setAiRules] = useState("");
+  const [aiChannels, setAiChannels] = useState<string[]>(["", "", "", ""]);
+  const [savingAi, setSavingAi] = useState(false);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+
   useEffect(() => {
     if (!loading && !user) navigate("/", { replace: true });
   }, [user, loading, navigate]);
