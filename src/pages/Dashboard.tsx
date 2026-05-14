@@ -315,7 +315,66 @@ const Dashboard = () => {
     setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   };
 
-  const inviteUrl = bot
+  const handleSaveAi = async () => {
+    if (!bot || !guild) return;
+    setSavingAi(true);
+    const channels = aiChannels.map((c) => c.trim()).filter(Boolean).slice(0, 4);
+    const invalid = channels.find((c) => !/^\d{17,20}$/.test(c));
+    if (invalid) {
+      setSavingAi(false);
+      toast.error(`Channel ID "${invalid}" must be a 17–20 digit Discord snowflake`);
+      return;
+    }
+    const { data, error } = await supabase
+      .from("guilds")
+      .update({
+        ai_enabled: aiEnabled,
+        ai_running: aiRunning,
+        ai_product_rules: aiRules,
+        ai_knowledge_channel_ids: channels,
+      })
+      .eq("id", guild.id)
+      .select()
+      .single();
+    setSavingAi(false);
+    if (error) return toast.error(error.message);
+    setGuild(data as Guild);
+    toast.success("AI settings saved");
+  };
+
+  const toggleAiRunning = async (next: boolean) => {
+    if (!guild) return;
+    const { data, error } = await supabase
+      .from("guilds").update({ ai_running: next })
+      .eq("id", guild.id).select().single();
+    if (error) return toast.error(error.message);
+    setGuild(data as Guild);
+    setAiRunning(next);
+    toast.success(next ? "AI started" : "AI stopped");
+  };
+
+  const toggleBotRunning = async (next: boolean) => {
+    if (!bot) return;
+    const { data, error } = await supabase
+      .from("bots").update({ bot_running: next })
+      .eq("id", bot.id).select().single();
+    if (error) return toast.error(error.message);
+    setBot(data as Bot);
+    toast.success(next ? "Bot starting…" : "Bot stopping…");
+  };
+
+  const restartBot = async () => {
+    if (!bot) return;
+    await supabase.from("bots").update({ bot_running: false }).eq("id", bot.id);
+    setTimeout(async () => {
+      const { data } = await supabase
+        .from("bots").update({ bot_running: true })
+        .eq("id", bot.id).select().single();
+      if (data) setBot(data as Bot);
+    }, 6000);
+    toast.success("Restarting bot — back online in ~10s");
+  };
+
     ? `https://discord.com/oauth2/authorize?client_id=${bot.application_id}&scope=bot+applications.commands&permissions=534723950672`
     : "";
 
