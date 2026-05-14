@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
 import {
   LogOut,
   Bot as BotIcon,
@@ -28,6 +29,12 @@ import {
   Plus,
   Trash2,
   Tag,
+  Brain,
+  Power,
+  PlayCircle,
+  StopCircle,
+  FileText,
+  Settings2,
 } from "lucide-react";
 
 interface Bot {
