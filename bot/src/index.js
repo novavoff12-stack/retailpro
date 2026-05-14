@@ -500,6 +500,11 @@ function attachHandlers(ctx) {
       if (pending) {
         await relayUserMessageToChannel(channel, interaction.user, pending.content, pending.files);
         await logMessage(ticket.id, interaction.user, pending.content, false);
+        if (cfg.ai_enabled && cfg.ai_running) {
+          tryAiReply(ctx, cfg, ticket, channel, interaction.user, pending.content).catch((e) =>
+            console.error(`[${ctx.botRow.id}] tryAiReply (pending)`, e)
+          );
+        }
       }
 
       try {
