@@ -164,15 +164,27 @@ const Dashboard = () => {
           setWelcomeMsg(g.welcome_message);
           setCloseMsg(g.close_message);
           setConfirmEmoji(g.confirmation_emoji);
+          setAiEnabled(!!g.ai_enabled);
+          setAiRunning(g.ai_running !== false);
+          setAiRules(g.ai_product_rules ?? "");
+          const chans = (g.ai_knowledge_channel_ids ?? []) as string[];
+          setAiChannels([0, 1, 2, 3].map((i) => chans[i] ?? ""));
 
-          const { data: cats } = await supabase
-            .from("ticket_categories")
-            .select("*")
-            .eq("bot_id", botRow.id)
-            .eq("guild_id", g.guild_id)
-            .order("sort_order", { ascending: true })
-            .order("name", { ascending: true });
+          const [{ data: cats }, { data: tks }] = await Promise.all([
+            supabase
+              .from("ticket_categories").select("*")
+              .eq("bot_id", botRow.id).eq("guild_id", g.guild_id)
+              .order("sort_order", { ascending: true })
+              .order("name", { ascending: true }),
+            supabase
+              .from("tickets")
+              .select("id,user_discord_id,category_name,status,opened_at,closed_at,closed_by_username")
+              .eq("bot_id", botRow.id).eq("guild_id", g.guild_id)
+              .order("opened_at", { ascending: false })
+              .limit(50),
+          ]);
           if (cats) setCategories(cats as TicketCategory[]);
+          if (tks) setTickets(tks as Ticket[]);
         }
       }
       setFetching(false);
