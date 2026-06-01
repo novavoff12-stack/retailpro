@@ -415,6 +415,20 @@ function attachHandlers(ctx) {
           return;
         }
 
+        if (content.toLowerCase() === '?aistop') {
+          await db.from('tickets').update({ ai_active: false }).eq('id', ticket.id);
+          await msg.reply('🤖 AI paused for this ticket. Use `?aistart` to resume.');
+          try { await msg.delete(); } catch {}
+          return;
+        }
+
+        if (content.toLowerCase() === '?aistart') {
+          await db.from('tickets').update({ ai_active: true, ai_escalated: false }).eq('id', ticket.id);
+          await msg.reply('🤖 AI resumed for this ticket.');
+          try { await msg.delete(); } catch {}
+          return;
+        }
+
         if (content.toLowerCase().startsWith('?close')) {
           const reason = content.slice(6).trim();
           const user = await client.users.fetch(ticket.user_discord_id).catch(() => null);
@@ -459,12 +473,11 @@ function attachHandlers(ctx) {
           return;
         }
 
-        if (!content.startsWith('?')) {
-          const files = [...msg.attachments.values()].map((a) => a.url);
-          await sendStaffReply(content, files);
-          return;
-        }
+        // Staff messages that aren't a command are NOT forwarded.
+        // The only way to send a message to the user is `?reply <message>`.
+        return;
       }
+
     } catch (err) {
       console.error(`[${ctx.botRow.id}] messageCreate`, err);
     }
