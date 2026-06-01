@@ -174,38 +174,57 @@ async function relayUserMessageToChannel(channel, user, content, files) {
 }
 
 // Ask the edge function for an AI reply; if confident, DM the user and post in the ticket channel.
+// On escalation, mark the ticket so AI never tries again and notify the user.
 async function tryAiReply(ctx, cfg, ticket, channel, user, userMessage) {
+  // Don't run if AI has been stopped or already escalated for this ticket.
+  if (ticket.ai_active === false || ticket.ai_escalated === true) return;
+
   const url = `${SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/ai-modmail-reply`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-    },
-    body: JSON.stringify({
-      bot_id: ctx.botRow.id,
-      ticket_id: ticket.id,
-      user_message: userMessage ?? '',
-    }),
-  });
-  if (!res.ok) {
-    console.error(`[${ctx.botRow.id}] ai-modmail-reply HTTP ${res.status}`);
+  let data = null;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({
+        bot_id: ctx.botRow.id,
+        ticket_id: ticket.id,
+        user_message: userMessage ?? '',
+      }),
+    });
+    if (!res.ok) {
+      console.error(`[${ctx.botRow.id}] ai-modmail-reply HTTP ${res.status}`);
+      return;
+    }
+    data = await res.json();
+  } catch (e) {
+    console.error(`[${ctx.botRow.id}] ai-modmail-reply fetch failed`, e);
     return;
   }
-  const data = await res.json();
+
   if (!data?.should_reply || !data?.reply) {
-    if (data?.reason) {
-      try {
-        await channel.send({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle('AI escalated to staff')
-              .setDescription(`*${data.reason}*`)
-              .setColor(0xfaa61a),
-          ],
-        });
-      } catch {}
-    }
+    // Escalate: tell the user, lock the ticket from further AI replies, notify staff in channel.
+    await db.from('tickets').update({ ai_escalated: true, ai_active: false }).eq('id', ticket.id);
+
+    const escalateEmbed = new EmbedBuilder()
+      .setTitle('Escalated to staff')
+      .setDescription('A staff member has been notified and will reply here as soon as possible. Thanks for your patience!')
+      .setColor(0xfaa61a)
+      .setTimestamp(new Date());
+    try { await user.send({ embeds: [escalateEmbed] }); } catch {}
+
+    try {
+      await channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle('AI escalated to staff')
+            .setDescription(data?.reason ? `*${data.reason}*` : '*AI was not confident enough to answer.*')
+            .setColor(0xfaa61a),
+        ],
+      });
+    } catch {}
     return;
   }
 
@@ -225,6 +244,7 @@ async function tryAiReply(ctx, cfg, ticket, channel, user, userMessage) {
     is_staff: true,
   });
 }
+
 
 // Cache messages from selected knowledge channels so the AI has context to draw from.
 async function scrapeKnowledgeChannels(ctx) {
