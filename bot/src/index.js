@@ -484,16 +484,34 @@ function attachHandlers(ctx) {
   });
 
   client.on('interactionCreate', async (interaction) => {
+    // ACK as the very first thing so Discord never sees "interaction failed".
+    console.log(`[${ctx.botRow.id}] interaction received: type=${interaction.type} customId=${interaction.customId ?? '(none)'}`);
+
     try {
-      if (!interaction.isStringSelectMenu()) return;
-      if (!interaction.customId.startsWith('cat:')) return;
+      if (!interaction.isStringSelectMenu?.()) return;
+      if (!interaction.customId?.startsWith('cat:')) return;
+    } catch (e) {
+      console.error(`[${ctx.botRow.id}] interaction type check`, e);
+      return;
+    }
 
+    // Defer FIRST. If this fails the interaction is dead anyway.
+    try {
+      await interaction.deferUpdate();
+    } catch (e) {
+      console.error(`[${ctx.botRow.id}] deferUpdate failed`, e?.code, e?.message);
+      // Fallback: try ephemeral reply so the user sees *something*
+      try {
+        await interaction.reply({ content: '⌛ Working on it…', ephemeral: true });
+      } catch {}
+    }
+
+    try {
       const guildId = interaction.customId.slice(4);
-      const categoryId = interaction.values[0];
-
-      // Acknowledge immediately
-      try { await interaction.deferUpdate(); } catch (e) {
-        console.error(`[${ctx.botRow.id}] deferUpdate`, e);
+      const categoryId = interaction.values?.[0];
+      if (!categoryId) {
+        try { await interaction.followUp({ content: 'No category selected.', ephemeral: true }); } catch {}
+        return;
       }
 
       const cfg = await getGuildConfig(ctx, guildId);
@@ -547,13 +565,15 @@ function attachHandlers(ctx) {
           .setColor(0x57f287);
         await interaction.editReply({ embeds: [doneEmbed], components: [] });
       } catch (e) {
-        console.error(`[${ctx.botRow.id}] editReply`, e);
+        console.error(`[${ctx.botRow.id}] editReply`, e?.code, e?.message);
         try { await interaction.user.send({ content: '✅ Ticket opened. Keep replying here to send more messages.' }); } catch {}
       }
     } catch (err) {
       console.error(`[${ctx.botRow.id}] interactionCreate`, err);
+      try { await interaction.followUp({ content: '❌ Something went wrong opening your ticket.', ephemeral: true }); } catch {}
     }
   });
+
 
   client.on('error', (err) => console.error(`[${ctx.botRow.id}] client error`, err));
   client.on('shardError', (err) => console.error(`[${ctx.botRow.id}] shard error`, err));
