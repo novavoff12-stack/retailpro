@@ -174,38 +174,57 @@ async function relayUserMessageToChannel(channel, user, content, files) {
 }
 
 // Ask the edge function for an AI reply; if confident, DM the user and post in the ticket channel.
+// On escalation, mark the ticket so AI never tries again and notify the user.
 async function tryAiReply(ctx, cfg, ticket, channel, user, userMessage) {
+  // Don't run if AI has been stopped or already escalated for this ticket.
+  if (ticket.ai_active === false || ticket.ai_escalated === true) return;
+
   const url = `${SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/ai-modmail-reply`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-    },
-    body: JSON.stringify({
-      bot_id: ctx.botRow.id,
-      ticket_id: ticket.id,
-      user_message: userMessage ?? '',
-    }),
-  });
-  if (!res.ok) {
-    console.error(`[${ctx.botRow.id}] ai-modmail-reply HTTP ${res.status}`);
+  let data = null;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({
+        bot_id: ctx.botRow.id,
+        ticket_id: ticket.id,
+        user_message: userMessage ?? '',
+      }),
+    });
+    if (!res.ok) {
+      console.error(`[${ctx.botRow.id}] ai-modmail-reply HTTP ${res.status}`);
+      return;
+    }
+    data = await res.json();
+  } catch (e) {
+    console.error(`[${ctx.botRow.id}] ai-modmail-reply fetch failed`, e);
     return;
   }
-  const data = await res.json();
+
   if (!data?.should_reply || !data?.reply) {
-    if (data?.reason) {
-      try {
-        await channel.send({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle('AI escalated to staff')
-              .setDescription(`*${data.reason}*`)
-              .setColor(0xfaa61a),
-          ],
-        });
-      } catch {}
-    }
+    // Escalate: tell the user, lock the ticket from further AI replies, notify staff in channel.
+    await db.from('tickets').update({ ai_escalated: true, ai_active: false }).eq('id', ticket.id);
+
+    const escalateEmbed = new EmbedBuilder()
+      .setTitle('Escalated to staff')
+      .setDescription('A staff member has been notified and will reply here as soon as possible. Thanks for your patience!')
+      .setColor(0xfaa61a)
+      .setTimestamp(new Date());
+    try { await user.send({ embeds: [escalateEmbed] }); } catch {}
+
+    try {
+      await channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle('AI escalated to staff')
+            .setDescription(data?.reason ? `*${data.reason}*` : '*AI was not confident enough to answer.*')
+            .setColor(0xfaa61a),
+        ],
+      });
+    } catch {}
     return;
   }
 
@@ -225,6 +244,7 @@ async function tryAiReply(ctx, cfg, ticket, channel, user, userMessage) {
     is_staff: true,
   });
 }
+
 
 // Cache messages from selected knowledge channels so the AI has context to draw from.
 async function scrapeKnowledgeChannels(ctx) {
@@ -395,6 +415,20 @@ function attachHandlers(ctx) {
           return;
         }
 
+        if (content.toLowerCase() === '?aistop') {
+          await db.from('tickets').update({ ai_active: false }).eq('id', ticket.id);
+          await msg.reply('🤖 AI paused for this ticket. Use `?aistart` to resume.');
+          try { await msg.delete(); } catch {}
+          return;
+        }
+
+        if (content.toLowerCase() === '?aistart') {
+          await db.from('tickets').update({ ai_active: true, ai_escalated: false }).eq('id', ticket.id);
+          await msg.reply('🤖 AI resumed for this ticket.');
+          try { await msg.delete(); } catch {}
+          return;
+        }
+
         if (content.toLowerCase().startsWith('?close')) {
           const reason = content.slice(6).trim();
           const user = await client.users.fetch(ticket.user_discord_id).catch(() => null);
@@ -439,28 +473,45 @@ function attachHandlers(ctx) {
           return;
         }
 
-        if (!content.startsWith('?')) {
-          const files = [...msg.attachments.values()].map((a) => a.url);
-          await sendStaffReply(content, files);
-          return;
-        }
+        // Staff messages that aren't a command are NOT forwarded.
+        // The only way to send a message to the user is `?reply <message>`.
+        return;
       }
+
     } catch (err) {
       console.error(`[${ctx.botRow.id}] messageCreate`, err);
     }
   });
 
   client.on('interactionCreate', async (interaction) => {
+    // ACK as the very first thing so Discord never sees "interaction failed".
+    console.log(`[${ctx.botRow.id}] interaction received: type=${interaction.type} customId=${interaction.customId ?? '(none)'}`);
+
     try {
-      if (!interaction.isStringSelectMenu()) return;
-      if (!interaction.customId.startsWith('cat:')) return;
+      if (!interaction.isStringSelectMenu?.()) return;
+      if (!interaction.customId?.startsWith('cat:')) return;
+    } catch (e) {
+      console.error(`[${ctx.botRow.id}] interaction type check`, e);
+      return;
+    }
 
+    // Defer FIRST. If this fails the interaction is dead anyway.
+    try {
+      await interaction.deferUpdate();
+    } catch (e) {
+      console.error(`[${ctx.botRow.id}] deferUpdate failed`, e?.code, e?.message);
+      // Fallback: try ephemeral reply so the user sees *something*
+      try {
+        await interaction.reply({ content: '⌛ Working on it…', ephemeral: true });
+      } catch {}
+    }
+
+    try {
       const guildId = interaction.customId.slice(4);
-      const categoryId = interaction.values[0];
-
-      // Acknowledge immediately
-      try { await interaction.deferUpdate(); } catch (e) {
-        console.error(`[${ctx.botRow.id}] deferUpdate`, e);
+      const categoryId = interaction.values?.[0];
+      if (!categoryId) {
+        try { await interaction.followUp({ content: 'No category selected.', ephemeral: true }); } catch {}
+        return;
       }
 
       const cfg = await getGuildConfig(ctx, guildId);
@@ -514,13 +565,15 @@ function attachHandlers(ctx) {
           .setColor(0x57f287);
         await interaction.editReply({ embeds: [doneEmbed], components: [] });
       } catch (e) {
-        console.error(`[${ctx.botRow.id}] editReply`, e);
+        console.error(`[${ctx.botRow.id}] editReply`, e?.code, e?.message);
         try { await interaction.user.send({ content: '✅ Ticket opened. Keep replying here to send more messages.' }); } catch {}
       }
     } catch (err) {
       console.error(`[${ctx.botRow.id}] interactionCreate`, err);
+      try { await interaction.followUp({ content: '❌ Something went wrong opening your ticket.', ephemeral: true }); } catch {}
     }
   });
+
 
   client.on('error', (err) => console.error(`[${ctx.botRow.id}] client error`, err));
   client.on('shardError', (err) => console.error(`[${ctx.botRow.id}] shard error`, err));

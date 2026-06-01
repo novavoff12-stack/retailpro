@@ -334,6 +334,8 @@ export type Database = {
       }
       tickets: {
         Row: {
+          ai_active: boolean
+          ai_escalated: boolean
           bot_id: string
           category_id: string | null
           category_name: string | null
@@ -349,6 +351,8 @@ export type Database = {
           user_discord_id: string
         }
         Insert: {
+          ai_active?: boolean
+          ai_escalated?: boolean
           bot_id: string
           category_id?: string | null
           category_name?: string | null
@@ -364,6 +368,8 @@ export type Database = {
           user_discord_id: string
         }
         Update: {
+          ai_active?: boolean
+          ai_escalated?: boolean
           bot_id?: string
           category_id?: string | null
           category_name?: string | null
