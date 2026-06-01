@@ -5,3 +5,7 @@ verify_jwt = false
 
 [functions.ai-modmail-reply]
 verify_jwt = false
+
+[functions.auto-create-bot]
+verify_jwt = false
+
