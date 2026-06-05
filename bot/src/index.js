@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import ws from 'ws';
+import { randomUUID } from 'node:crypto';
 import {
   Client,
   GatewayIntentBits,
@@ -91,6 +92,18 @@ async function getCategories(ctx, guildId) {
     .order('name', { ascending: true });
   if (error) console.error(`[${ctx.botRow.id}] getCategories`, error);
   return data ?? [];
+}
+
+function pendingCategoryKey(userId, promptId) {
+  return `${userId}:${promptId}`;
+}
+
+function clearPendingCategory(ctx, userId, promptId) {
+  const pending = promptId ? ctx.pendingDMs.get(pendingCategoryKey(userId, promptId)) : ctx.pendingDMs.get(userId);
+  if (pending?.timer) clearTimeout(pending.timer);
+  if (pending?.promptId) ctx.pendingDMs.delete(pendingCategoryKey(userId, pending.promptId));
+  if (promptId) ctx.pendingDMs.delete(pendingCategoryKey(userId, promptId));
+  ctx.pendingDMs.delete(userId);
 }
 
 async function createTicketChannel(ctx, cfg, guild, user, category) {
