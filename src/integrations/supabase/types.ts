@@ -93,6 +93,8 @@ export type Database = {
           public_key: string
           status: string
           updated_at: string
+          worker_lease_id: string | null
+          worker_lease_until: string | null
         }
         Insert: {
           application_id: string
@@ -106,6 +108,8 @@ export type Database = {
           public_key: string
           status?: string
           updated_at?: string
+          worker_lease_id?: string | null
+          worker_lease_until?: string | null
         }
         Update: {
           application_id?: string
@@ -119,6 +123,8 @@ export type Database = {
           public_key?: string
           status?: string
           updated_at?: string
+          worker_lease_id?: string | null
+          worker_lease_until?: string | null
         }
         Relationships: []
       }
@@ -180,6 +186,50 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "guilds_bot_id_fkey"
+            columns: ["bot_id"]
+            isOneToOne: false
+            referencedRelation: "bots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      modmail_pending_prompts: {
+        Row: {
+          attachment_urls: string[]
+          bot_id: string
+          content: string
+          created_at: string
+          expires_at: string
+          guild_id: string
+          id: string
+          prompt_id: string
+          user_discord_id: string
+        }
+        Insert: {
+          attachment_urls?: string[]
+          bot_id: string
+          content?: string
+          created_at?: string
+          expires_at: string
+          guild_id: string
+          id?: string
+          prompt_id: string
+          user_discord_id: string
+        }
+        Update: {
+          attachment_urls?: string[]
+          bot_id?: string
+          content?: string
+          created_at?: string
+          expires_at?: string
+          guild_id?: string
+          id?: string
+          prompt_id?: string
+          user_discord_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "modmail_pending_prompts_bot_id_fkey"
             columns: ["bot_id"]
             isOneToOne: false
             referencedRelation: "bots"
@@ -458,6 +508,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_bot_worker: {
+        Args: {
+          _bot_id: string
+          _lease_until: string
+          _worker_lease_id: string
+        }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
