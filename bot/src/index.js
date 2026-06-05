@@ -600,10 +600,10 @@ function attachHandlers(ctx) {
     }
 
     try {
-      const guildId = interaction.customId.slice(4);
+      const [, guildId, promptId] = interaction.customId.split(':');
       const categoryId = interaction.values?.[0];
-      if (!categoryId) {
-        try { await interaction.followUp({ content: 'No category selected.', ephemeral: true }); } catch {}
+      if (!guildId || !promptId || !categoryId) {
+        try { await interaction.followUp({ content: 'This category menu is invalid. Please DM the bot again.', ephemeral: true }); } catch {}
         return;
       }
 
@@ -622,9 +622,13 @@ function attachHandlers(ctx) {
         .from('ticket_categories').select('*').eq('id', categoryId).maybeSingle();
       if (catErr) console.error(`[${ctx.botRow.id}] fetch category`, catErr);
 
-      const pending = ctx.pendingDMs.get(interaction.user.id);
-      if (pending?.timer) clearTimeout(pending.timer);
-      ctx.pendingDMs.delete(interaction.user.id);
+      const pending = await consumePendingCategory(ctx, interaction.user.id, promptId);
+      if (!pending) {
+        try {
+          await interaction.editReply({ content: 'This category menu expired or was already used. Please DM the bot again.', embeds: [], components: [] });
+        } catch {}
+        return;
+      }
 
       let ticket = await findOpenTicketByUser(ctx, interaction.user.id);
       let channel = ticket?.channel_id
