@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import ws from 'ws';
+import { randomUUID } from 'node:crypto';
 import {
   Client,
   GatewayIntentBits,
@@ -25,6 +26,8 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 const TRANSCRIPT_BASE = (TRANSCRIPT_BASE_URL || 'https://modmail.retailpro.space').replace(/\/+$/, '');
+const WORKER_ID = process.env.RAILWAY_REPLICA_ID || process.env.HOSTNAME || randomUUID();
+const BOT_LEASE_MS = 15_000;
 
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
@@ -91,6 +94,96 @@ async function getCategories(ctx, guildId) {
     .order('name', { ascending: true });
   if (error) console.error(`[${ctx.botRow.id}] getCategories`, error);
   return data ?? [];
+}
+
+function pendingCategoryKey(userId, promptId) {
+  return `${userId}:${promptId}`;
+}
+
+function clearPendingCategory(ctx, userId, promptId) {
+  const pending = promptId ? ctx.pendingDMs.get(pendingCategoryKey(userId, promptId)) : ctx.pendingDMs.get(userId);
+  if (pending?.timer) clearTimeout(pending.timer);
+  if (pending?.promptId) ctx.pendingDMs.delete(pendingCategoryKey(userId, pending.promptId));
+  if (promptId) ctx.pendingDMs.delete(pendingCategoryKey(userId, promptId));
+  ctx.pendingDMs.delete(userId);
+}
+
+async function createPendingCategory(ctx, cfg, user, content, files) {
+  const promptId = randomUUID().replace(/-/g, '').slice(0, 12);
+  const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+
+  await db
+    .from('modmail_pending_prompts')
+    .delete()
+    .eq('bot_id', ctx.botRow.id)
+    .eq('user_discord_id', user.id)
+    .lt('expires_at', new Date().toISOString());
+
+  const { data, error } = await db
+    .from('modmail_pending_prompts')
+    .insert({
+      bot_id: ctx.botRow.id,
+      guild_id: cfg.guild_id,
+      user_discord_id: user.id,
+      prompt_id: promptId,
+      content: content ?? '',
+      attachment_urls: files ?? [],
+      expires_at: expiresAt,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code !== '23505') console.error(`[${ctx.botRow.id}] create pending category`, error);
+    return null;
+  }
+
+  const pending = {
+    content: data.content ?? '',
+    files: data.attachment_urls ?? [],
+    cfg,
+    promptId,
+    timer: setTimeout(() => clearPendingCategory(ctx, user.id, promptId), 10 * 60_000),
+  };
+  ctx.pendingDMs.set(user.id, pending);
+  ctx.pendingDMs.set(pendingCategoryKey(user.id, promptId), pending);
+  return pending;
+}
+
+async function consumePendingCategory(ctx, userId, promptId) {
+  const localPending = promptId ? ctx.pendingDMs.get(pendingCategoryKey(userId, promptId)) : ctx.pendingDMs.get(userId);
+  let pending = null;
+  if (promptId) {
+    const { data, error } = await db
+      .from('modmail_pending_prompts')
+      .delete()
+      .eq('bot_id', ctx.botRow.id)
+      .eq('user_discord_id', userId)
+      .eq('prompt_id', promptId)
+      .gt('expires_at', new Date().toISOString())
+      .select()
+      .maybeSingle();
+    if (error) console.error(`[${ctx.botRow.id}] consume pending category`, error);
+    if (data) {
+      pending = { content: data.content ?? '', files: data.attachment_urls ?? [], promptId };
+    }
+  }
+
+  clearPendingCategory(ctx, userId, promptId);
+  return pending ?? (promptId ? null : localPending ?? null);
+}
+
+async function claimBotLease(botId) {
+  const { data, error } = await db.rpc('claim_bot_worker', {
+    _bot_id: botId,
+    _worker_lease_id: WORKER_ID,
+    _lease_until: new Date(Date.now() + BOT_LEASE_MS).toISOString(),
+  });
+  if (error) {
+    console.error(`[manager] claimBotLease ${botId}`, error);
+    return false;
+  }
+  return data === true;
 }
 
 async function createTicketChannel(ctx, cfg, guild, user, category) {
@@ -314,12 +407,19 @@ function attachHandlers(ctx) {
           const categories = await getCategories(ctx, cfg.guild_id);
 
           if (categories.length > 0) {
-            if (ctx.pendingDMs.has(msg.author.id)) {
+            const existingPending = ctx.pendingDMs.get(msg.author.id);
+            if (existingPending) {
               try { await msg.react('⌛'); } catch {}
               return;
             }
+            const pending = await createPendingCategory(ctx, cfg, msg.author, msg.content, files);
+            if (!pending) {
+              try { await msg.react('⌛'); } catch {}
+              return;
+            }
+
             const select = new StringSelectMenuBuilder()
-              .setCustomId(`cat:${cfg.guild_id}`)
+              .setCustomId(`cat:${cfg.guild_id}:${pending.promptId}`)
               .setPlaceholder('Choose a category…')
               .addOptions(
                 categories.slice(0, 25).map((c) => {
@@ -338,12 +438,15 @@ function attachHandlers(ctx) {
               .setDescription('Pick the category that best fits your message. Your original message will be sent to staff once you choose.')
               .setColor(0x5865f2);
 
-            await msg.author.send({ embeds: [promptEmbed], components: [row] });
-
-            const timer = setTimeout(() => ctx.pendingDMs.delete(msg.author.id), 10 * 60_000);
-            ctx.pendingDMs.set(msg.author.id, {
-              content: msg.content, files, cfg, timer,
-            });
+            try {
+              const promptMessage = await msg.author.send({ embeds: [promptEmbed], components: [row] });
+              pending.promptMessageId = promptMessage.id;
+            } catch (e) {
+              await consumePendingCategory(ctx, msg.author.id, pending.promptId);
+              console.error(`[${ctx.botRow.id}] category prompt send failed`, e?.message || e);
+              await msg.reply('I could not send the category menu. Please make sure your DMs are open and try again.').catch(() => {});
+              return;
+            }
             try { await msg.react('📋'); } catch {}
             return;
           }
@@ -507,10 +610,10 @@ function attachHandlers(ctx) {
     }
 
     try {
-      const guildId = interaction.customId.slice(4);
+      const [, guildId, promptId] = interaction.customId.split(':');
       const categoryId = interaction.values?.[0];
-      if (!categoryId) {
-        try { await interaction.followUp({ content: 'No category selected.', ephemeral: true }); } catch {}
+      if (!guildId || !promptId || !categoryId) {
+        try { await interaction.followUp({ content: 'This category menu is invalid. Please DM the bot again.', ephemeral: true }); } catch {}
         return;
       }
 
@@ -529,9 +632,13 @@ function attachHandlers(ctx) {
         .from('ticket_categories').select('*').eq('id', categoryId).maybeSingle();
       if (catErr) console.error(`[${ctx.botRow.id}] fetch category`, catErr);
 
-      const pending = ctx.pendingDMs.get(interaction.user.id);
-      if (pending?.timer) clearTimeout(pending.timer);
-      ctx.pendingDMs.delete(interaction.user.id);
+      const pending = await consumePendingCategory(ctx, interaction.user.id, promptId);
+      if (!pending) {
+        try {
+          await interaction.editReply({ content: 'This category menu expired or was already used. Please DM the bot again.', embeds: [], components: [] });
+        } catch {}
+        return;
+      }
 
       let ticket = await findOpenTicketByUser(ctx, interaction.user.id);
       let channel = ticket?.channel_id
@@ -653,12 +760,20 @@ async function syncBots() {
 
     const existing = workers.get(row.id);
     if (!existing) {
+      if (!(await claimBotLease(row.id))) continue;
       console.log(`[manager] starting new bot ${row.id} (${row.bot_name ?? 'unnamed'})`);
       startBot(row);
     } else if (existing.status === 'failed' && Date.now() >= existing.retryAt) {
+      if (!(await claimBotLease(row.id))) {
+        workers.delete(row.id);
+        continue;
+      }
       console.log(`[manager] retrying failed bot ${row.id}`);
       workers.delete(row.id);
       startBot(row);
+    } else if (!(await claimBotLease(row.id))) {
+      console.log(`[manager] another worker owns ${row.id}, stopping local copy`);
+      await stopBot(row.id, 'lease lost');
     } else if (existing.botRow.bot_token !== row.bot_token) {
       console.log(`[manager] token changed for ${row.id}, restarting`);
       await stopBot(row.id, 'token rotated');
