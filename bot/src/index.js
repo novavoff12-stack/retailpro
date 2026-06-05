@@ -26,6 +26,8 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 const TRANSCRIPT_BASE = (TRANSCRIPT_BASE_URL || 'https://modmail.retailpro.space').replace(/\/+$/, '');
+const WORKER_ID = process.env.RAILWAY_REPLICA_ID || process.env.HOSTNAME || randomUUID();
+const BOT_LEASE_MS = 15_000;
 
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
@@ -174,6 +176,19 @@ async function consumePendingCategory(ctx, userId, promptId) {
       .eq('prompt_id', promptId);
   }
   return pending ?? null;
+}
+
+async function claimBotLease(botId) {
+  const { data, error } = await db.rpc('claim_bot_worker', {
+    _bot_id: botId,
+    _worker_lease_id: WORKER_ID,
+    _lease_until: new Date(Date.now() + BOT_LEASE_MS).toISOString(),
+  });
+  if (error) {
+    console.error(`[manager] claimBotLease ${botId}`, error);
+    return false;
+  }
+  return data === true;
 }
 
 async function createTicketChannel(ctx, cfg, guild, user, category) {
