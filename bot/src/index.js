@@ -327,12 +327,24 @@ function attachHandlers(ctx) {
           const categories = await getCategories(ctx, cfg.guild_id);
 
           if (categories.length > 0) {
-            if (ctx.pendingDMs.has(msg.author.id)) {
+            const existingPending = ctx.pendingDMs.get(msg.author.id);
+            if (existingPending) {
               try { await msg.react('⌛'); } catch {}
               return;
             }
+            const promptId = randomUUID().replace(/-/g, '').slice(0, 12);
+            const pending = {
+              content: msg.content,
+              files,
+              cfg,
+              promptId,
+              timer: setTimeout(() => clearPendingCategory(ctx, msg.author.id, promptId), 10 * 60_000),
+            };
+            ctx.pendingDMs.set(msg.author.id, pending);
+            ctx.pendingDMs.set(pendingCategoryKey(msg.author.id, promptId), pending);
+
             const select = new StringSelectMenuBuilder()
-              .setCustomId(`cat:${cfg.guild_id}`)
+              .setCustomId(`cat:${cfg.guild_id}:${promptId}`)
               .setPlaceholder('Choose a category…')
               .addOptions(
                 categories.slice(0, 25).map((c) => {
@@ -351,12 +363,15 @@ function attachHandlers(ctx) {
               .setDescription('Pick the category that best fits your message. Your original message will be sent to staff once you choose.')
               .setColor(0x5865f2);
 
-            await msg.author.send({ embeds: [promptEmbed], components: [row] });
-
-            const timer = setTimeout(() => ctx.pendingDMs.delete(msg.author.id), 10 * 60_000);
-            ctx.pendingDMs.set(msg.author.id, {
-              content: msg.content, files, cfg, timer,
-            });
+            try {
+              const promptMessage = await msg.author.send({ embeds: [promptEmbed], components: [row] });
+              pending.promptMessageId = promptMessage.id;
+            } catch (e) {
+              clearPendingCategory(ctx, msg.author.id, promptId);
+              console.error(`[${ctx.botRow.id}] category prompt send failed`, e?.message || e);
+              await msg.reply('I could not send the category menu. Please make sure your DMs are open and try again.').catch(() => {});
+              return;
+            }
             try { await msg.react('📋'); } catch {}
             return;
           }
