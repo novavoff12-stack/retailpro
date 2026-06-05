@@ -151,31 +151,26 @@ async function createPendingCategory(ctx, cfg, user, content, files) {
 }
 
 async function consumePendingCategory(ctx, userId, promptId) {
-  let pending = promptId ? ctx.pendingDMs.get(pendingCategoryKey(userId, promptId)) : ctx.pendingDMs.get(userId);
-  if (!pending && promptId) {
+  const localPending = promptId ? ctx.pendingDMs.get(pendingCategoryKey(userId, promptId)) : ctx.pendingDMs.get(userId);
+  let pending = null;
+  if (promptId) {
     const { data, error } = await db
       .from('modmail_pending_prompts')
-      .select('*')
+      .delete()
       .eq('bot_id', ctx.botRow.id)
       .eq('user_discord_id', userId)
       .eq('prompt_id', promptId)
+      .gt('expires_at', new Date().toISOString())
+      .select()
       .maybeSingle();
     if (error) console.error(`[${ctx.botRow.id}] consume pending category`, error);
-    if (data && new Date(data.expires_at).getTime() > Date.now()) {
+    if (data) {
       pending = { content: data.content ?? '', files: data.attachment_urls ?? [], promptId };
     }
   }
 
   clearPendingCategory(ctx, userId, promptId);
-  if (promptId) {
-    await db
-      .from('modmail_pending_prompts')
-      .delete()
-      .eq('bot_id', ctx.botRow.id)
-      .eq('user_discord_id', userId)
-      .eq('prompt_id', promptId);
-  }
-  return pending ?? null;
+  return pending ?? (promptId ? null : localPending ?? null);
 }
 
 async function claimBotLease(botId) {
