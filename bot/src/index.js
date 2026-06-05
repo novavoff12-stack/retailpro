@@ -765,12 +765,20 @@ async function syncBots() {
 
     const existing = workers.get(row.id);
     if (!existing) {
+      if (!(await claimBotLease(row.id))) continue;
       console.log(`[manager] starting new bot ${row.id} (${row.bot_name ?? 'unnamed'})`);
       startBot(row);
     } else if (existing.status === 'failed' && Date.now() >= existing.retryAt) {
+      if (!(await claimBotLease(row.id))) {
+        workers.delete(row.id);
+        continue;
+      }
       console.log(`[manager] retrying failed bot ${row.id}`);
       workers.delete(row.id);
       startBot(row);
+    } else if (!(await claimBotLease(row.id))) {
+      console.log(`[manager] another worker owns ${row.id}, stopping local copy`);
+      await stopBot(row.id, 'lease lost');
     } else if (existing.botRow.bot_token !== row.bot_token) {
       console.log(`[manager] token changed for ${row.id}, restarting`);
       await stopBot(row.id, 'token rotated');
