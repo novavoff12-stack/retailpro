@@ -106,6 +106,76 @@ function clearPendingCategory(ctx, userId, promptId) {
   ctx.pendingDMs.delete(userId);
 }
 
+async function createPendingCategory(ctx, cfg, user, content, files) {
+  const promptId = randomUUID().replace(/-/g, '').slice(0, 12);
+  const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+
+  await db
+    .from('modmail_pending_prompts')
+    .delete()
+    .eq('bot_id', ctx.botRow.id)
+    .eq('user_discord_id', user.id)
+    .lt('expires_at', new Date().toISOString());
+
+  const { data, error } = await db
+    .from('modmail_pending_prompts')
+    .insert({
+      bot_id: ctx.botRow.id,
+      guild_id: cfg.guild_id,
+      user_discord_id: user.id,
+      prompt_id: promptId,
+      content: content ?? '',
+      attachment_urls: files ?? [],
+      expires_at: expiresAt,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code !== '23505') console.error(`[${ctx.botRow.id}] create pending category`, error);
+    return null;
+  }
+
+  const pending = {
+    content: data.content ?? '',
+    files: data.attachment_urls ?? [],
+    cfg,
+    promptId,
+    timer: setTimeout(() => clearPendingCategory(ctx, user.id, promptId), 10 * 60_000),
+  };
+  ctx.pendingDMs.set(user.id, pending);
+  ctx.pendingDMs.set(pendingCategoryKey(user.id, promptId), pending);
+  return pending;
+}
+
+async function consumePendingCategory(ctx, userId, promptId) {
+  let pending = promptId ? ctx.pendingDMs.get(pendingCategoryKey(userId, promptId)) : ctx.pendingDMs.get(userId);
+  if (!pending && promptId) {
+    const { data, error } = await db
+      .from('modmail_pending_prompts')
+      .select('*')
+      .eq('bot_id', ctx.botRow.id)
+      .eq('user_discord_id', userId)
+      .eq('prompt_id', promptId)
+      .maybeSingle();
+    if (error) console.error(`[${ctx.botRow.id}] consume pending category`, error);
+    if (data && new Date(data.expires_at).getTime() > Date.now()) {
+      pending = { content: data.content ?? '', files: data.attachment_urls ?? [], promptId };
+    }
+  }
+
+  clearPendingCategory(ctx, userId, promptId);
+  if (promptId) {
+    await db
+      .from('modmail_pending_prompts')
+      .delete()
+      .eq('bot_id', ctx.botRow.id)
+      .eq('user_discord_id', userId)
+      .eq('prompt_id', promptId);
+  }
+  return pending ?? null;
+}
+
 async function createTicketChannel(ctx, cfg, guild, user, category) {
   const overwrites = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
