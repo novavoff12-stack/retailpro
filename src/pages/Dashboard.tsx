@@ -126,6 +126,7 @@ const Dashboard = () => {
   const [newCatName, setNewCatName] = useState("");
   const [newCatDesc, setNewCatDesc] = useState("");
   const [newCatEmoji, setNewCatEmoji] = useState("");
+  const [newCatDiscordId, setNewCatDiscordId] = useState("");
   const [savingCat, setSavingCat] = useState(false);
 
   // post-setup management view
