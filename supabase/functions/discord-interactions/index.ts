@@ -525,6 +525,19 @@ Deno.serve(async (req) => {
     return Response.json({ type: 1 }, { headers: corsHeaders });
   }
 
+  // MESSAGE_COMPONENT — Discord sends DM select-menu choices here when an interactions endpoint is configured.
+  if (interaction.type === 3) {
+    if (interaction.data?.custom_id?.startsWith("cat:")) {
+      try {
+        return await handleCategorySelect(admin, bot, interaction);
+      } catch (e) {
+        console.error("category select handler err", e);
+        return updateMessage(categoryStatusEmbed("Something went wrong", "Please DM the bot again to open a ticket.", 0xed4245));
+      }
+    }
+    return ephemeral("Unknown interaction");
+  }
+
   // APPLICATION_COMMAND
   if (interaction.type === 2) {
     const name = interaction.data?.name;
