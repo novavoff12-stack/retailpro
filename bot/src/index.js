@@ -214,7 +214,7 @@ async function createTicketChannel(ctx, cfg, guild, user, category) {
   const channel = await guild.channels.create({
     name: baseName,
     type: ChannelType.GuildText,
-    parent: cfg.modmail_category_id,
+    parent: (category && category.discord_category_id) ? category.discord_category_id : cfg.modmail_category_id,
     permissionOverwrites: overwrites,
     topic: `Modmail with ${user.tag} (${user.id})${category ? ` — ${category.name}` : ''}`,
   });
