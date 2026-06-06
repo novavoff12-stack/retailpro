@@ -746,6 +746,17 @@ const Dashboard = () => {
                       placeholder="Short description (optional)"
                       className="flex-[2]"
                     />
+                    <Input
+                      value={c.discord_category_id ?? ""}
+                      onChange={(e) => setCategories((prev) => prev.map((x) => x.id === c.id ? { ...x, discord_category_id: e.target.value } : x))}
+                      onBlur={(e) => {
+                        const v = e.target.value.trim();
+                        if (v && !/^\d{17,20}$/.test(v)) { toast.error("Discord category ID must be a 17–20 digit snowflake"); return; }
+                        handleUpdateCategory(c.id, { discord_category_id: v || null });
+                      }}
+                      placeholder="Discord category ID (optional)"
+                      className="flex-1 min-w-[180px] font-mono text-xs"
+                    />
                     <Button variant="ghost" size="icon" onClick={() => handleDeleteCategory(c.id)} aria-label="Delete category">
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
