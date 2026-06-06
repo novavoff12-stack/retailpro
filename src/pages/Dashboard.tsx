@@ -83,6 +83,7 @@ interface TicketCategory {
   description: string | null;
   emoji: string | null;
   sort_order: number;
+  discord_category_id: string | null;
 }
 
 const STEPS = [
