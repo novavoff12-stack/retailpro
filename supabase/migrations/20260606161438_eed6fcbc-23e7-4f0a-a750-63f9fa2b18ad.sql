@@ -1,0 +1,1 @@
+ALTER TABLE public.ticket_categories ADD COLUMN IF NOT EXISTS discord_category_id text;
