@@ -55,6 +55,33 @@ function ephemeral(content: string) {
 function reply(content: string) {
   return Response.json({ type: 4, data: { content } }, { headers: corsHeaders });
 }
+function updateMessage(data: Record<string, unknown>) {
+  return Response.json({ type: 7, data }, { headers: corsHeaders });
+}
+
+function userTag(user: any) {
+  if (!user) return "user";
+  return user.discriminator && user.discriminator !== "0" ? `${user.username}#${user.discriminator}` : user.username;
+}
+
+function avatarUrl(user: any) {
+  if (user?.avatar) return `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png`;
+  return "https://cdn.discordapp.com/embed/avatars/0.png";
+}
+
+async function editComponentMessage(bot: any, interaction: any, data: Record<string, unknown>) {
+  const channelId = interaction.channel_id;
+  const messageId = interaction.message?.id;
+  if (!channelId || !messageId) return;
+  await discord(`/channels/${channelId}/messages/${messageId}`, bot.bot_token, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  }).catch((e) => console.error("edit component message failed", e));
+}
+
+function categoryStatusEmbed(title: string, description: string, color = 0x5865f2) {
+  return { embeds: [{ title, description, color }], components: [] };
+}
 
 // ---------- Handlers ----------
 async function handleModmailOpen(
