@@ -282,6 +282,10 @@ const Dashboard = () => {
     if (!bot || !guild) return;
     const nm = newCatName.trim();
     if (!nm) return toast.error("Category name is required");
+    const discordId = newCatDiscordId.trim();
+    if (discordId && !/^\d{17,20}$/.test(discordId)) {
+      return toast.error("Discord category ID must be a 17–20 digit snowflake");
+    }
     setSavingCat(true);
     const { data, error } = await supabase
       .from("ticket_categories")
@@ -291,6 +295,7 @@ const Dashboard = () => {
         name: nm,
         description: newCatDesc.trim() || null,
         emoji: newCatEmoji.trim() || null,
+        discord_category_id: discordId || null,
         sort_order: categories.length,
       })
       .select()
@@ -301,6 +306,7 @@ const Dashboard = () => {
     setNewCatName("");
     setNewCatDesc("");
     setNewCatEmoji("");
+    setNewCatDiscordId("");
     toast.success("Category added");
   };
 
