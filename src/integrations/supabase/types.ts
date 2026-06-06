@@ -313,6 +313,7 @@ export type Database = {
           bot_id: string
           created_at: string
           description: string | null
+          discord_category_id: string | null
           emoji: string | null
           guild_id: string
           id: string
@@ -324,6 +325,7 @@ export type Database = {
           bot_id: string
           created_at?: string
           description?: string | null
+          discord_category_id?: string | null
           emoji?: string | null
           guild_id: string
           id?: string
@@ -335,6 +337,7 @@ export type Database = {
           bot_id?: string
           created_at?: string
           description?: string | null
+          discord_category_id?: string | null
           emoji?: string | null
           guild_id?: string
           id?: string

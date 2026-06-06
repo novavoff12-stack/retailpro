@@ -379,7 +379,7 @@ async function createTicketFromCategory(admin: any, bot: any, cfg: any, user: an
     body: JSON.stringify({
       name: `modmail-${username}`.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 90) || `modmail-${user.id}`,
       type: 0,
-      parent_id: cfg.modmail_category_id,
+      parent_id: category?.discord_category_id || cfg.modmail_category_id,
       topic: `Modmail with ${username} (${user.id})${category ? ` — ${category.name}` : ""}`,
       permission_overwrites: [
         { id: cfg.guild_id, type: 0, deny: "1024" },
