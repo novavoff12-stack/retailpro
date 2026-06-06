@@ -788,12 +788,18 @@ const Dashboard = () => {
                   placeholder="Anything else"
                   className="flex-[2] min-w-[200px]"
                 />
+                <Input
+                  value={newCatDiscordId}
+                  onChange={(e) => setNewCatDiscordId(e.target.value)}
+                  placeholder="Discord category ID (optional)"
+                  className="flex-1 min-w-[200px] font-mono text-xs"
+                />
                 <Button onClick={handleAddCategory} disabled={savingCat || !newCatName.trim()}>
                   <Plus className="h-4 w-4 mr-2" /> Add
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Up to 25 categories. Tip: try "General Inquiries", "Product Support", "Billing", "Report a User".
+                Up to 25 categories. Each can route to its own Discord category — leave blank to use the server's default modmail category.
               </p>
             </div>
           </CardContent>
