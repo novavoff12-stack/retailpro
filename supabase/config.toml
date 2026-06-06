@@ -9,3 +9,6 @@ verify_jwt = false
 [functions.auto-create-bot]
 verify_jwt = false
 
+[functions.discord-interactions]
+verify_jwt = false
+

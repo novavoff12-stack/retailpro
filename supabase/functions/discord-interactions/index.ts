@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const TRANSCRIPT_BASE = (Deno.env.get("TRANSCRIPT_BASE_URL") || "https://modmail.retailpro.space").replace(/\/+$/, "");
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,6 +13,10 @@ const corsHeaders = {
 };
 
 const DISCORD_API = "https://discord.com/api/v10";
+
+function transcriptUrl(ticketId: string) {
+  return `${TRANSCRIPT_BASE}/transcript/id/${ticketId}`;
+}
 
 // ---------- Ed25519 signature verification ----------
 function hexToBytes(hex: string) {
@@ -54,6 +59,33 @@ function ephemeral(content: string) {
 }
 function reply(content: string) {
   return Response.json({ type: 4, data: { content } }, { headers: corsHeaders });
+}
+function updateMessage(data: Record<string, unknown>) {
+  return Response.json({ type: 7, data }, { headers: corsHeaders });
+}
+
+function userTag(user: any) {
+  if (!user) return "user";
+  return user.discriminator && user.discriminator !== "0" ? `${user.username}#${user.discriminator}` : user.username;
+}
+
+function avatarUrl(user: any) {
+  if (user?.avatar) return `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png`;
+  return "https://cdn.discordapp.com/embed/avatars/0.png";
+}
+
+async function editComponentMessage(bot: any, interaction: any, data: Record<string, unknown>) {
+  const channelId = interaction.channel_id;
+  const messageId = interaction.message?.id;
+  if (!channelId || !messageId) return;
+  await discord(`/channels/${channelId}/messages/${messageId}`, bot.bot_token, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  }).catch((e) => console.error("edit component message failed", e));
+}
+
+function categoryStatusEmbed(title: string, description: string, color = 0x5865f2) {
+  return { embeds: [{ title, description, color }], components: [] };
 }
 
 // ---------- Handlers ----------
@@ -326,6 +358,147 @@ async function handleClose(admin: any, bot: any, interaction: any, reason: strin
   return reply(`🔒 Ticket closed${reason ? ` — *${reason}*` : ""}. Channel deletes in 3s.`);
 }
 
+async function consumePendingCategory(admin: any, botId: string, userId: string, promptId: string) {
+  const { data, error } = await admin
+    .from("modmail_pending_prompts")
+    .delete()
+    .eq("bot_id", botId)
+    .eq("user_discord_id", userId)
+    .eq("prompt_id", promptId)
+    .gt("expires_at", new Date().toISOString())
+    .select()
+    .maybeSingle();
+  if (error) console.error("consume pending category", error);
+  return data;
+}
+
+async function createTicketFromCategory(admin: any, bot: any, cfg: any, user: any, category: any) {
+  const username = userTag(user);
+  const channelRes = await discord(`/guilds/${cfg.guild_id}/channels`, bot.bot_token, {
+    method: "POST",
+    body: JSON.stringify({
+      name: `modmail-${username}`.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 90) || `modmail-${user.id}`,
+      type: 0,
+      parent_id: cfg.modmail_category_id,
+      topic: `Modmail with ${username} (${user.id})${category ? ` — ${category.name}` : ""}`,
+      permission_overwrites: [
+        { id: cfg.guild_id, type: 0, deny: "1024" },
+        { id: bot.application_id, type: 1, allow: "68624" },
+        ...(cfg.staff_role_id ? [{ id: cfg.staff_role_id, type: 0, allow: "68608" }] : []),
+      ],
+    }),
+  });
+  if (!channelRes.ok) {
+    const txt = await channelRes.text();
+    console.error("category channel create failed", txt);
+    return null;
+  }
+  const channel = await channelRes.json();
+  const { data: ticket, error } = await admin.from("tickets").insert({
+    bot_id: bot.id,
+    guild_id: cfg.guild_id,
+    user_discord_id: user.id,
+    channel_id: channel.id,
+    status: "open",
+    category_id: category?.id ?? null,
+    category_name: category?.name ?? null,
+  }).select().single();
+  if (error) {
+    console.error("category ticket insert failed", error);
+    return null;
+  }
+
+  await discord(`/channels/${channel.id}/messages`, bot.bot_token, {
+    method: "POST",
+    body: JSON.stringify({
+      content: cfg.staff_role_id ? `<@&${cfg.staff_role_id}>` : "",
+      embeds: [{
+        title: "New modmail ticket",
+        description: `From <@${user.id}> (\`${username}\`)`,
+        thumbnail: { url: avatarUrl(user) },
+        color: 0x5865f2,
+        timestamp: new Date().toISOString(),
+        fields: [
+          ...(category ? [{ name: "Category", value: `${category.emoji ? `${category.emoji} ` : ""}${category.name}` }] : []),
+          { name: "Transcript", value: transcriptUrl(ticket.id) },
+        ],
+      }],
+      allowed_mentions: { roles: cfg.staff_role_id ? [cfg.staff_role_id] : [] },
+    }),
+  });
+
+  return { ticket, channel };
+}
+
+async function relayPendingMessage(admin: any, bot: any, ticket: any, channelId: string, user: any, pending: any) {
+  await discord(`/channels/${channelId}/messages`, bot.bot_token, {
+    method: "POST",
+    body: JSON.stringify({
+      embeds: [{
+        author: { name: userTag(user), icon_url: avatarUrl(user) },
+        description: pending.content || "*(no text)*",
+        color: 0x5865f2,
+        timestamp: new Date().toISOString(),
+      }],
+      files: (pending.attachment_urls ?? []).map((url: string) => ({ attachment: url })),
+    }),
+  });
+  await admin.from("ticket_messages").insert({
+    ticket_id: ticket.id,
+    author_discord_id: user.id,
+    author_username: userTag(user),
+    content: pending.content ?? "",
+    is_staff: false,
+  });
+}
+
+async function handleCategorySelect(admin: any, bot: any, interaction: any) {
+  const [, guildId, promptId] = String(interaction.data?.custom_id ?? "").split(":");
+  const categoryId = interaction.data?.values?.[0];
+  const user = interaction.user ?? interaction.member?.user;
+  if (!guildId || !promptId || !categoryId || !user?.id) {
+    return updateMessage(categoryStatusEmbed("Category unavailable", "Please DM the bot again to open a new ticket.", 0xed4245));
+  }
+
+  const background = (async () => {
+    const { data: cfg } = await admin.from("guilds").select("*").eq("bot_id", bot.id).eq("guild_id", guildId).maybeSingle();
+    if (!cfg) {
+      await editComponentMessage(bot, interaction, categoryStatusEmbed("Bot not configured", "Please DM the bot again later.", 0xed4245));
+      return;
+    }
+    const { data: category } = await admin.from("ticket_categories").select("*").eq("id", categoryId).eq("bot_id", bot.id).eq("guild_id", guildId).maybeSingle();
+    const pending = await consumePendingCategory(admin, bot.id, user.id, promptId);
+    if (!pending) {
+      await editComponentMessage(bot, interaction, categoryStatusEmbed("Menu expired", "This category menu was already used or expired. Please DM the bot again.", 0xed4245));
+      return;
+    }
+
+    const { data: existing } = await admin
+      .from("tickets")
+      .select("*")
+      .eq("bot_id", bot.id)
+      .eq("guild_id", guildId)
+      .eq("user_discord_id", user.id)
+      .eq("status", "open")
+      .maybeSingle();
+    const created = existing?.channel_id ? { ticket: existing, channel: { id: existing.channel_id } } : await createTicketFromCategory(admin, bot, cfg, user, category);
+    if (!created) {
+      await editComponentMessage(bot, interaction, categoryStatusEmbed("Could not open ticket", "Please try again in a moment.", 0xed4245));
+      return;
+    }
+
+    await relayPendingMessage(admin, bot, created.ticket, created.channel.id, user, pending);
+    await editComponentMessage(bot, interaction, categoryStatusEmbed(
+      "Ticket opened",
+      `Category: **${category?.emoji ? `${category.emoji} ` : ""}${category?.name ?? "General"}**\n\nA staff member will be with you shortly. Keep replying here to send more messages.`,
+      0x57f287,
+    ));
+  })();
+
+  (globalThis as any).EdgeRuntime?.waitUntil?.(background);
+  return updateMessage(categoryStatusEmbed("Opening ticket…", "Your category was received. Creating your ticket now.", 0x5865f2));
+}
+
 // ---------- Main handler ----------
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -350,6 +523,19 @@ Deno.serve(async (req) => {
   // PING
   if (interaction.type === 1) {
     return Response.json({ type: 1 }, { headers: corsHeaders });
+  }
+
+  // MESSAGE_COMPONENT — Discord sends DM select-menu choices here when an interactions endpoint is configured.
+  if (interaction.type === 3) {
+    if (interaction.data?.custom_id?.startsWith("cat:")) {
+      try {
+        return await handleCategorySelect(admin, bot, interaction);
+      } catch (e) {
+        console.error("category select handler err", e);
+        return updateMessage(categoryStatusEmbed("Something went wrong", "Please DM the bot again to open a ticket.", 0xed4245));
+      }
+    }
+    return ephemeral("Unknown interaction");
   }
 
   // APPLICATION_COMMAND
