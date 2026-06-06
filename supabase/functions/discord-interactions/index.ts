@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const TRANSCRIPT_BASE = (Deno.env.get("TRANSCRIPT_BASE_URL") || "https://modmail.retailpro.space").replace(/\/+$/, "");
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,6 +13,10 @@ const corsHeaders = {
 };
 
 const DISCORD_API = "https://discord.com/api/v10";
+
+function transcriptUrl(ticketId: string) {
+  return `${TRANSCRIPT_BASE}/transcript/id/${ticketId}`;
+}
 
 // ---------- Ed25519 signature verification ----------
 function hexToBytes(hex: string) {
