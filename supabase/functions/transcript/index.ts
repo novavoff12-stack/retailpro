@@ -84,11 +84,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    const db = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      SERVICE_KEY,
-      { auth: { persistSession: false } },
-    );
 
     const { data: ticket, error: tErr } = await db
       .from("tickets")
