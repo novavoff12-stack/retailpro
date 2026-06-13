@@ -715,6 +715,14 @@ const Dashboard = () => {
               <Input id="emoji" value={confirmEmoji} onChange={(e) => setConfirmEmoji(e.target.value)} placeholder="✅" className="text-center text-lg" />
             </div>
 
+            <div className="flex items-center justify-between rounded-lg border border-border bg-secondary/30 p-3">
+              <div>
+                <Label className="cursor-pointer">Auto-ask for a review on close</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">When on, the bot DMs a 1–5 star prompt right after <code>?close</code>. Staff can also send it manually with <code>?review</code>.</p>
+              </div>
+              <Switch checked={autoReview} onCheckedChange={setAutoReview} />
+            </div>
+
             <div className="flex items-center gap-3 pt-2">
               <Button onClick={handleSaveGuild} disabled={savingGuild}>
                 {savingGuild ? "Saving…" : guild ? "Update configuration" : "Save configuration"}
