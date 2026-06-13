@@ -14,8 +14,19 @@ const corsHeaders = {
 
 const DISCORD_API = "https://discord.com/api/v10";
 
-function transcriptUrl(ticketId: string) {
-  return `${TRANSCRIPT_BASE}/transcript/id/${ticketId}`;
+async function transcriptSig(ticketId: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(SERVICE_ROLE),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`transcript:${ticketId}`));
+  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function transcriptUrl(ticketId: string) {
+  return `${TRANSCRIPT_BASE}/transcript/id/${ticketId}?sig=${await transcriptSig(ticketId)}`;
 }
 
 // ---------- Ed25519 signature verification ----------
