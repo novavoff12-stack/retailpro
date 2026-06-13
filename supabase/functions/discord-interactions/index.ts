@@ -431,7 +431,7 @@ async function createTicketFromCategory(admin: any, bot: any, cfg: any, user: an
         timestamp: new Date().toISOString(),
         fields: [
           ...(category ? [{ name: "Category", value: `${category.emoji ? `${category.emoji} ` : ""}${category.name}` }] : []),
-          { name: "Transcript", value: transcriptUrl(ticket.id) },
+          { name: "Transcript", value: await transcriptUrl(ticket.id) },
         ],
       }],
       allowed_mentions: { roles: cfg.staff_role_id ? [cfg.staff_role_id] : [] },
