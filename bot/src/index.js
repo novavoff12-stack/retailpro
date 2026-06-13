@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import ws from 'ws';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHmac } from 'node:crypto';
 import {
   Client,
   GatewayIntentBits,
@@ -41,8 +41,11 @@ const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 // ============================================================
 const workers = new Map();
 
+function transcriptSig(ticketId) {
+  return createHmac('sha256', SUPABASE_SERVICE_ROLE_KEY).update(`transcript:${ticketId}`).digest('hex');
+}
 function transcriptUrl(ticketId) {
-  return `${TRANSCRIPT_BASE}/transcript/id/${ticketId}`;
+  return `${TRANSCRIPT_BASE}/transcript/id/${ticketId}?sig=${transcriptSig(ticketId)}`;
 }
 
 async function getGuildConfig(ctx, guildId) {

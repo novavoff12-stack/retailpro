@@ -17,6 +17,13 @@ const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  // Require shared-secret auth: bot calls this with the service-role key as bearer.
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const presented = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (!presented || presented !== SERVICE_KEY) {
+    return json({ error: "Unauthorized" }, 401);
+  }
+
   try {
     const { bot_id, ticket_id, user_message } = await req.json();
     if (!bot_id || !ticket_id || typeof user_message !== "string") {

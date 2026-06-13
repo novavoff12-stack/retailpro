@@ -12,12 +12,30 @@ const CLIENT_SECRET = Deno.env.get("DISCORD_CLIENT_SECRET")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+function isAllowedOrigin(origin: string): boolean {
+  try {
+    const u = new URL(origin);
+    if (u.protocol !== "https:" && u.protocol !== "http:") return false;
+    const host = u.hostname.toLowerCase();
+    if (host === "localhost" || host === "127.0.0.1") return true;
+    if (host === "modmail.retailpro.space") return true;
+    if (host.endsWith(".lovable.app")) return true;
+    if (host.endsWith(".lovableproject.com")) return true;
+    if (host.endsWith(".lovable.dev")) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const url = new URL(req.url);
   const action = url.searchParams.get("action") ?? "login";
-  const redirectOrigin = url.searchParams.get("origin") ?? `${url.protocol}//${url.host}`;
+  const defaultOrigin = `${url.protocol}//${url.host}`;
+  const requestedOrigin = url.searchParams.get("origin") ?? defaultOrigin;
+  const redirectOrigin = isAllowedOrigin(requestedOrigin) ? requestedOrigin : "https://modmail.retailpro.space";
   const redirectUri = `${SUPABASE_URL}/functions/v1/discord-oauth?action=callback`;
 
   try {
@@ -35,7 +53,8 @@ Deno.serve(async (req) => {
     if (action === "callback") {
       const code = url.searchParams.get("code");
       const state = url.searchParams.get("state");
-      const appOrigin = state ? decodeURIComponent(state) : redirectOrigin;
+      const stateOrigin = state ? decodeURIComponent(state) : redirectOrigin;
+      const appOrigin = isAllowedOrigin(stateOrigin) ? stateOrigin : "https://modmail.retailpro.space";
       if (!code) throw new Error("Missing code");
 
       // Exchange code for token
