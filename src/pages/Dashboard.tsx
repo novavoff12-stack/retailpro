@@ -183,7 +183,7 @@ const Dashboard = () => {
           const chans = (g.ai_knowledge_channel_ids ?? []) as string[];
           setAiChannels([0, 1, 2, 3].map((i) => chans[i] ?? ""));
 
-          const [{ data: cats }, { data: tks }] = await Promise.all([
+          const [{ data: cats }, { data: tks }, { data: rvs }] = await Promise.all([
             supabase
               .from("ticket_categories").select("*")
               .eq("bot_id", botRow.id).eq("guild_id", g.guild_id)
@@ -195,9 +195,16 @@ const Dashboard = () => {
               .eq("bot_id", botRow.id).eq("guild_id", g.guild_id)
               .order("opened_at", { ascending: false })
               .limit(50),
+            supabase
+              .from("reviews")
+              .select("id,stars,comment,created_at")
+              .eq("bot_id", botRow.id)
+              .order("created_at", { ascending: false })
+              .limit(100),
           ]);
           if (cats) setCategories(cats as TicketCategory[]);
           if (tks) setTickets(tks as Ticket[]);
+          if (rvs) setReviews(rvs as Review[]);
         }
       }
       setFetching(false);
