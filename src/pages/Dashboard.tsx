@@ -459,6 +459,7 @@ const Dashboard = () => {
             guild={guild!}
             tickets={tickets}
             categories={categories}
+            reviews={reviews}
             aiEnabled={aiEnabled}
             setAiEnabled={setAiEnabled}
             aiRunning={aiRunning}
