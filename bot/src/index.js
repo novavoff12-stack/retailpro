@@ -100,6 +100,23 @@ function pendingCategoryKey(userId, promptId) {
   return `${userId}:${promptId}`;
 }
 
+function toDiscordOptionEmoji(value) {
+  const emoji = String(value ?? '').trim();
+  if (!emoji) return null;
+
+  const custom = emoji.match(/^<(?<animated>a?):(?<name>[A-Za-z0-9_]{2,32}):(?<id>\d{17,20})>$/);
+  if (custom?.groups) {
+    return {
+      id: custom.groups.id,
+      name: custom.groups.name,
+      animated: custom.groups.animated === 'a',
+    };
+  }
+
+  if (/^\d{17,20}$/.test(emoji)) return null;
+  return { name: emoji };
+}
+
 function clearPendingCategory(ctx, userId, promptId) {
   const pending = promptId ? ctx.pendingDMs.get(pendingCategoryKey(userId, promptId)) : ctx.pendingDMs.get(userId);
   if (pending?.timer) clearTimeout(pending.timer);
@@ -428,7 +445,8 @@ function attachHandlers(ctx) {
                     value: c.id,
                   };
                   if (c.description) opt.description = c.description.slice(0, 100);
-                  if (c.emoji) opt.emoji = c.emoji;
+                  const emoji = toDiscordOptionEmoji(c.emoji);
+                  if (emoji) opt.emoji = emoji;
                   return opt;
                 }),
               );
@@ -443,8 +461,20 @@ function attachHandlers(ctx) {
               pending.promptMessageId = promptMessage.id;
             } catch (e) {
               await consumePendingCategory(ctx, msg.author.id, pending.promptId);
-              console.error(`[${ctx.botRow.id}] category prompt send failed`, e?.message || e);
-              await msg.reply('I could not send the category menu. Please make sure your DMs are open and try again.').catch(() => {});
+              console.error(`[${ctx.botRow.id}] category prompt send failed`, {
+                message: e?.message,
+                code: e?.code,
+                status: e?.status,
+                method: e?.method,
+                url: e?.url,
+                rawError: e?.rawError,
+              });
+              const isClosedDm = e?.code === 50007 || e?.status === 403;
+              await msg.reply(
+                isClosedDm
+                  ? 'I could not send the category menu. Please make sure your DMs are open and try again.'
+                  : 'I could not build the category menu because one category has invalid settings. Please tell staff to check the category names, descriptions, and emoji values.',
+              ).catch(() => {});
               return;
             }
             try { await msg.react('📋'); } catch {}
