@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import ws from 'ws';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHmac } from 'node:crypto';
 import {
   Client,
   GatewayIntentBits,
