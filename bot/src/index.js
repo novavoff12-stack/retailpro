@@ -591,6 +591,14 @@ function attachHandlers(ctx) {
           return;
         }
 
+        if (content.toLowerCase() === '?review') {
+          const sent = await sendReviewPrompt(ctx, ticket);
+          await msg.reply(sent
+            ? '⭐ Review request sent to the user.'
+            : '⚠️ Could not DM the user (their DMs may be closed).');
+          return;
+        }
+
         if (content.toLowerCase().startsWith('?close')) {
           const reason = content.slice(6).trim();
           const user = await client.users.fetch(ticket.user_discord_id).catch(() => null);
@@ -631,6 +639,9 @@ function attachHandlers(ctx) {
           }
 
           await msg.reply('Closing ticket in 5s…');
+          if (cfg.auto_review_request !== false) {
+            sendReviewPrompt(ctx, ticket).catch(() => {});
+          }
           setTimeout(() => msg.channel.delete().catch(() => {}), 5000);
           return;
         }
