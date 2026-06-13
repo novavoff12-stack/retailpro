@@ -53,7 +53,8 @@ Deno.serve(async (req) => {
     if (action === "callback") {
       const code = url.searchParams.get("code");
       const state = url.searchParams.get("state");
-      const appOrigin = state ? decodeURIComponent(state) : redirectOrigin;
+      const stateOrigin = state ? decodeURIComponent(state) : redirectOrigin;
+      const appOrigin = isAllowedOrigin(stateOrigin) ? stateOrigin : "https://modmail.retailpro.space";
       if (!code) throw new Error("Missing code");
 
       // Exchange code for token
