@@ -1030,6 +1030,102 @@ function ManagementView({
         </CardContent>
       </Card>
 
+      {(() => {
+        const count = reviews.length;
+        const avg = count ? reviews.reduce((s, r) => s + r.stars, 0) / count : 0;
+        const tier = tierLabel(count);
+        const publicUrl = `${window.location.origin}/reviews/${bot.id}`;
+        return (
+          <Card>
+            <CardHeader>
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Star className="h-5 w-5" /> Customer reviews
+                  </CardTitle>
+                  <CardDescription>
+                    Star ratings collected after each closed ticket. Share your public page below.
+                  </CardDescription>
+                </div>
+                <a
+                  href={publicUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
+                >
+                  Open public page <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="relative overflow-hidden rounded-xl border border-border bg-gradient-to-br from-amber-400/10 via-card to-card p-6">
+                <div className="flex items-center gap-6 flex-wrap">
+                  <div>
+                    <div className="text-5xl font-black tabular-nums">
+                      {avg.toFixed(1)}
+                      <span className="text-xl text-muted-foreground font-medium">/5</span>
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-0.5">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <Star
+                          key={i}
+                          className={`h-4 w-4 ${
+                            i <= Math.round(avg)
+                              ? "text-amber-400 fill-amber-400"
+                              : "text-muted-foreground/30"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-[160px]">
+                    <Badge className="bg-amber-400/15 text-amber-700 dark:text-amber-300 hover:bg-amber-400/20 border-amber-400/30 gap-1.5">
+                      <Star className="h-3.5 w-3.5 fill-current" /> {tier}
+                    </Badge>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {count} review{count === 1 ? "" : "s"} so far
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {reviews.length > 0 && (
+                <div className="space-y-2 max-h-80 overflow-auto pr-1">
+                  {reviews.slice(0, 10).map((r) => (
+                    <div
+                      key={r.id}
+                      className="rounded-lg border border-border bg-secondary/30 p-3"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-0.5">
+                          {[1, 2, 3, 4, 5].map((i) => (
+                            <Star
+                              key={i}
+                              className={`h-3.5 w-3.5 ${
+                                i <= r.stars
+                                  ? "text-amber-400 fill-amber-400"
+                                  : "text-muted-foreground/30"
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <time className="text-xs text-muted-foreground">
+                          {new Date(r.created_at).toLocaleDateString()}
+                        </time>
+                      </div>
+                      {r.comment && (
+                        <p className="mt-1.5 text-sm text-foreground/90">{r.comment}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
+
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
