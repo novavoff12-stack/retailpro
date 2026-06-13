@@ -11,6 +11,7 @@ import Login from "./pages/Login.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
 import AuthCallback from "./pages/AuthCallback.tsx";
 import Transcript from "./pages/Transcript.tsx";
+import Reviews from "./pages/Reviews.tsx";
 
 const queryClient = new QueryClient();
 
@@ -28,6 +29,7 @@ const App = () => (
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/transcript/id/:id" element={<Transcript />} />
+          <Route path="/reviews/:botId" element={<Reviews />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
