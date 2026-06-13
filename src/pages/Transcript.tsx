@@ -38,7 +38,8 @@ export default function Transcript() {
       setLoading(false);
       return;
     }
-    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcript?id=${encodeURIComponent(id)}`;
+    const sig = new URLSearchParams(window.location.search).get("sig") ?? "";
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcript?id=${encodeURIComponent(id)}${sig ? `&sig=${encodeURIComponent(sig)}` : ""}`;
     fetch(url, {
       headers: {
         apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
