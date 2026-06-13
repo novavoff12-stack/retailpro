@@ -660,7 +660,44 @@ function attachHandlers(ctx) {
     // ACK as the very first thing so Discord never sees "interaction failed".
     console.log(`[${ctx.botRow.id}] interaction received: type=${interaction.type} customId=${interaction.customId ?? '(none)'}`);
 
+    // Review star buttons (DM)
     try {
+      if (interaction.isButton?.() && interaction.customId?.startsWith('review:')) {
+        const [, ticketId, starsRaw] = interaction.customId.split(':');
+        const stars = Number(starsRaw);
+        if (!ticketId || !Number.isInteger(stars) || stars < 1 || stars > 5) {
+          try { await interaction.reply({ content: 'Invalid review button.', ephemeral: true }); } catch {}
+          return;
+        }
+        const { data: ticket } = await db
+          .from('tickets').select('id,bot_id,guild_id,user_discord_id')
+          .eq('id', ticketId).maybeSingle();
+        if (!ticket || ticket.user_discord_id !== interaction.user.id) {
+          try { await interaction.reply({ content: 'This review prompt is not for you.', ephemeral: true }); } catch {}
+          return;
+        }
+        const { error: insErr } = await db.from('reviews').insert({
+          bot_id: ticket.bot_id,
+          guild_id: ticket.guild_id,
+          ticket_id: ticket.id,
+          user_discord_id: interaction.user.id,
+          stars,
+        });
+        if (insErr && insErr.code !== '23505') {
+          console.error(`[${ctx.botRow.id}] insert review`, insErr);
+          try { await interaction.reply({ content: '⚠️ Could not save your review.', ephemeral: true }); } catch {}
+          return;
+        }
+        const already = insErr?.code === '23505';
+        const thanks = new EmbedBuilder()
+          .setTitle(already ? 'Review already received' : 'Thanks for your feedback!')
+          .setDescription(`You rated us **${stars} / 5** ${'⭐'.repeat(stars)}`)
+          .setColor(0xfacc15);
+        try { await interaction.update({ embeds: [thanks], components: [] }); }
+        catch { try { await interaction.reply({ embeds: [thanks], ephemeral: true }); } catch {} }
+        return;
+      }
+
       if (!interaction.isStringSelectMenu?.()) return;
       if (!interaction.customId?.startsWith('cat:')) return;
     } catch (e) {
