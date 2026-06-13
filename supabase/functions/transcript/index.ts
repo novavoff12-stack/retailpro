@@ -47,9 +47,37 @@ Deno.serve(async (req) => {
       });
     }
 
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+
+    // Authorize: either valid HMAC signature OR authenticated bot-owner JWT.
     const sig = (url.searchParams.get("sig") ?? "").toLowerCase();
     const want = await expectedSig(id);
-    if (!sig || !timingSafeEqual(sig, want)) {
+    let authorized = !!sig && timingSafeEqual(sig, want);
+
+    if (!authorized) {
+      const authHeader = req.headers.get("Authorization") ?? "";
+      const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+      if (token) {
+        try {
+          const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
+            global: { headers: { Authorization: `Bearer ${token}` } },
+          });
+          const { data: claims } = await userClient.auth.getClaims(token);
+          const uid = claims?.claims?.sub as string | undefined;
+          if (uid) {
+            // Look up ticket -> bot -> owner
+            const { data: t } = await db.from("tickets").select("bot_id").eq("id", id).maybeSingle();
+            if (t?.bot_id) {
+              const { data: b } = await db.from("bots").select("owner_user_id").eq("id", t.bot_id).maybeSingle();
+              if (b?.owner_user_id === uid) authorized = true;
+            }
+          }
+        } catch { /* ignore */ }
+      }
+    }
+
+    if (!authorized) {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401,
         headers: { ...cors, "content-type": "application/json" },
