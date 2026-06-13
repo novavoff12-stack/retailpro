@@ -854,6 +854,7 @@ interface ManagementViewProps {
   guild: Guild;
   tickets: Ticket[];
   categories: TicketCategory[];
+  reviews: Review[];
   aiEnabled: boolean;
   setAiEnabled: (v: boolean) => void;
   aiRunning: boolean;
@@ -869,8 +870,17 @@ interface ManagementViewProps {
   onEditSetup: () => void;
 }
 
+function tierLabel(count: number) {
+  if (count >= 100) return "100+ Customers";
+  if (count >= 50) return "50+ Customers";
+  if (count >= 25) return "25+ Customers";
+  if (count >= 10) return "10+ Customers";
+  if (count >= 1) return "1+ Customer";
+  return "No reviews yet";
+}
+
 function ManagementView({
-  bot, guild, tickets, categories,
+  bot, guild, tickets, categories, reviews,
   aiEnabled, setAiEnabled, aiRunning, aiRules, setAiRules,
   aiChannels, setAiChannels, savingAi, onSaveAi,
   onToggleAi, onToggleBot, onRestartBot, onEditSetup,
