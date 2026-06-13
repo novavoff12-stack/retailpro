@@ -62,6 +62,14 @@ interface Guild {
   ai_running: boolean;
   ai_product_rules: string;
   ai_knowledge_channel_ids: string[];
+  auto_review_request: boolean;
+}
+
+interface Review {
+  id: string;
+  stars: number;
+  comment: string | null;
+  created_at: string;
 }
 
 interface Ticket {
@@ -120,6 +128,8 @@ const Dashboard = () => {
   const [welcomeMsg, setWelcomeMsg] = useState("");
   const [closeMsg, setCloseMsg] = useState("");
   const [confirmEmoji, setConfirmEmoji] = useState("✅");
+  const [autoReview, setAutoReview] = useState(true);
+  const [reviews, setReviews] = useState<Review[]>([]);
 
   // ticket categories
   const [categories, setCategories] = useState<TicketCategory[]>([]);
@@ -166,6 +176,7 @@ const Dashboard = () => {
           setWelcomeMsg(g.welcome_message);
           setCloseMsg(g.close_message);
           setConfirmEmoji(g.confirmation_emoji);
+          setAutoReview(g.auto_review_request !== false);
           setAiEnabled(!!g.ai_enabled);
           setAiRunning(g.ai_running !== false);
           setAiRules(g.ai_product_rules ?? "");
