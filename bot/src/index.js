@@ -91,6 +91,30 @@ async function logMessage(ticketId, author, content, isStaff) {
   });
 }
 
+async function sendReviewPrompt(ctx, ticket) {
+  try {
+    const user = await ctx.client.users.fetch(ticket.user_discord_id).catch(() => null);
+    if (!user) return false;
+    const row = new ActionRowBuilder().addComponents(
+      [1, 2, 3, 4, 5].map((n) =>
+        new ButtonBuilder()
+          .setCustomId(`review:${ticket.id}:${n}`)
+          .setLabel(`${n} ⭐`)
+          .setStyle(ButtonStyle.Secondary),
+      ),
+    );
+    const embed = new EmbedBuilder()
+      .setTitle('How did we do?')
+      .setDescription('Your feedback helps us improve. Tap a rating below:')
+      .setColor(0xfacc15);
+    await user.send({ embeds: [embed], components: [row] });
+    return true;
+  } catch (e) {
+    console.error(`[${ctx.botRow.id}] sendReviewPrompt`, e?.code, e?.message);
+    return false;
+  }
+}
+
 async function getCategories(ctx, guildId) {
   const { data, error } = await db
     .from('ticket_categories').select('*')
