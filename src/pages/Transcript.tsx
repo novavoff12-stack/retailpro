@@ -41,19 +41,24 @@ export default function Transcript() {
     }
     const sig = new URLSearchParams(window.location.search).get("sig") ?? "";
     const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcript?id=${encodeURIComponent(id)}${sig ? `&sig=${encodeURIComponent(sig)}` : ""}`;
-    fetch(url, {
-      headers: {
-        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-      },
-    })
-      .then(async (r) => {
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const bearer = session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+        const r = await fetch(url, {
+          headers: {
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            Authorization: `Bearer ${bearer}`,
+          },
+        });
         if (!r.ok) throw new Error((await r.json()).error || `HTTP ${r.status}`);
-        return r.json();
-      })
-      .then(setData)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+        setData(await r.json());
+      } catch (e: any) {
+        setError(e?.message || "Failed to load");
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [id]);
 
   if (loading) {
