@@ -284,6 +284,7 @@ const Dashboard = () => {
       welcome_message: welcomeMsg.trim() || "Hi! Thanks for reaching out. A staff member will be with you shortly.",
       close_message: closeMsg.trim() || "Your ticket has been closed. Feel free to message us again if you need anything.",
       confirmation_emoji: confirmEmoji.trim() || "✅",
+      auto_review_request: autoReview,
     };
     const { data, error } = await supabase
       .from("guilds")
