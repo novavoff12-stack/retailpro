@@ -35,6 +35,7 @@ import {
   StopCircle,
   FileText,
   Settings2,
+  Star,
 } from "lucide-react";
 
 interface Bot {
