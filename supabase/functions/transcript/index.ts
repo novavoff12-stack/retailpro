@@ -1,5 +1,6 @@
-// Public transcript reader. No auth required — knowing the ticket UUID is the
-// access token. Returns ticket metadata + ordered messages.
+// Transcript reader. Requires an HMAC signature in the URL so transcript links
+// can be safely shared in Discord channels without leaking access to anyone who
+// guesses or forwards a bare ticket UUID.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const cors = {
@@ -8,11 +9,32 @@ const cors = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+async function expectedSig(ticketId: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(SERVICE_KEY),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`transcript:${ticketId}`));
+  // hex
+  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let r = 0;
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   try {
     const url = new URL(req.url);
-    // Accept ?id=... or trailing path segment
     let id = url.searchParams.get("id");
     if (!id) {
       const parts = url.pathname.split("/").filter(Boolean);
@@ -25,9 +47,18 @@ Deno.serve(async (req) => {
       });
     }
 
+    const sig = (url.searchParams.get("sig") ?? "").toLowerCase();
+    const want = await expectedSig(id);
+    if (!sig || !timingSafeEqual(sig, want)) {
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401,
+        headers: { ...cors, "content-type": "application/json" },
+      });
+    }
+
     const db = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      SERVICE_KEY,
       { auth: { persistSession: false } },
     );
 
@@ -57,7 +88,7 @@ Deno.serve(async (req) => {
       headers: { ...cors, "content-type": "application/json" },
     });
   } catch (e) {
-    return new Response(JSON.stringify({ error: String(e?.message ?? e) }), {
+    return new Response(JSON.stringify({ error: String((e as Error)?.message ?? e) }), {
       status: 500,
       headers: { ...cors, "content-type": "application/json" },
     });
