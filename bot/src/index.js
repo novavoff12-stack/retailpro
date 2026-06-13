@@ -10,6 +10,8 @@ import {
   EmbedBuilder,
   ActionRowBuilder,
   StringSelectMenuBuilder,
+  ButtonBuilder,
+  ButtonStyle,
 } from 'discord.js';
 import { createClient } from '@supabase/supabase-js';
 
@@ -87,6 +89,30 @@ async function logMessage(ticketId, author, content, isStaff) {
     content: content ?? '',
     is_staff: isStaff,
   });
+}
+
+async function sendReviewPrompt(ctx, ticket) {
+  try {
+    const user = await ctx.client.users.fetch(ticket.user_discord_id).catch(() => null);
+    if (!user) return false;
+    const row = new ActionRowBuilder().addComponents(
+      [1, 2, 3, 4, 5].map((n) =>
+        new ButtonBuilder()
+          .setCustomId(`review:${ticket.id}:${n}`)
+          .setLabel(`${n} ⭐`)
+          .setStyle(ButtonStyle.Secondary),
+      ),
+    );
+    const embed = new EmbedBuilder()
+      .setTitle('How did we do?')
+      .setDescription('Your feedback helps us improve. Tap a rating below:')
+      .setColor(0xfacc15);
+    await user.send({ embeds: [embed], components: [row] });
+    return true;
+  } catch (e) {
+    console.error(`[${ctx.botRow.id}] sendReviewPrompt`, e?.code, e?.message);
+    return false;
+  }
 }
 
 async function getCategories(ctx, guildId) {
@@ -565,6 +591,14 @@ function attachHandlers(ctx) {
           return;
         }
 
+        if (content.toLowerCase() === '?review') {
+          const sent = await sendReviewPrompt(ctx, ticket);
+          await msg.reply(sent
+            ? '⭐ Review request sent to the user.'
+            : '⚠️ Could not DM the user (their DMs may be closed).');
+          return;
+        }
+
         if (content.toLowerCase().startsWith('?close')) {
           const reason = content.slice(6).trim();
           const user = await client.users.fetch(ticket.user_discord_id).catch(() => null);
@@ -605,6 +639,9 @@ function attachHandlers(ctx) {
           }
 
           await msg.reply('Closing ticket in 5s…');
+          if (cfg.auto_review_request !== false) {
+            sendReviewPrompt(ctx, ticket).catch(() => {});
+          }
           setTimeout(() => msg.channel.delete().catch(() => {}), 5000);
           return;
         }
@@ -623,7 +660,44 @@ function attachHandlers(ctx) {
     // ACK as the very first thing so Discord never sees "interaction failed".
     console.log(`[${ctx.botRow.id}] interaction received: type=${interaction.type} customId=${interaction.customId ?? '(none)'}`);
 
+    // Review star buttons (DM)
     try {
+      if (interaction.isButton?.() && interaction.customId?.startsWith('review:')) {
+        const [, ticketId, starsRaw] = interaction.customId.split(':');
+        const stars = Number(starsRaw);
+        if (!ticketId || !Number.isInteger(stars) || stars < 1 || stars > 5) {
+          try { await interaction.reply({ content: 'Invalid review button.', ephemeral: true }); } catch {}
+          return;
+        }
+        const { data: ticket } = await db
+          .from('tickets').select('id,bot_id,guild_id,user_discord_id')
+          .eq('id', ticketId).maybeSingle();
+        if (!ticket || ticket.user_discord_id !== interaction.user.id) {
+          try { await interaction.reply({ content: 'This review prompt is not for you.', ephemeral: true }); } catch {}
+          return;
+        }
+        const { error: insErr } = await db.from('reviews').insert({
+          bot_id: ticket.bot_id,
+          guild_id: ticket.guild_id,
+          ticket_id: ticket.id,
+          user_discord_id: interaction.user.id,
+          stars,
+        });
+        if (insErr && insErr.code !== '23505') {
+          console.error(`[${ctx.botRow.id}] insert review`, insErr);
+          try { await interaction.reply({ content: '⚠️ Could not save your review.', ephemeral: true }); } catch {}
+          return;
+        }
+        const already = insErr?.code === '23505';
+        const thanks = new EmbedBuilder()
+          .setTitle(already ? 'Review already received' : 'Thanks for your feedback!')
+          .setDescription(`You rated us **${stars} / 5** ${'⭐'.repeat(stars)}`)
+          .setColor(0xfacc15);
+        try { await interaction.update({ embeds: [thanks], components: [] }); }
+        catch { try { await interaction.reply({ embeds: [thanks], ephemeral: true }); } catch {} }
+        return;
+      }
+
       if (!interaction.isStringSelectMenu?.()) return;
       if (!interaction.customId?.startsWith('cat:')) return;
     } catch (e) {

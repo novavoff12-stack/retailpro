@@ -134,6 +134,7 @@ export type Database = {
           ai_knowledge_channel_ids: string[]
           ai_product_rules: string
           ai_running: boolean
+          auto_review_request: boolean
           bot_id: string
           close_message: string
           confirmation_emoji: string
@@ -152,6 +153,7 @@ export type Database = {
           ai_knowledge_channel_ids?: string[]
           ai_product_rules?: string
           ai_running?: boolean
+          auto_review_request?: boolean
           bot_id: string
           close_message?: string
           confirmation_emoji?: string
@@ -170,6 +172,7 @@ export type Database = {
           ai_knowledge_channel_ids?: string[]
           ai_product_rules?: string
           ai_running?: boolean
+          auto_review_request?: boolean
           bot_id?: string
           close_message?: string
           confirmation_emoji?: string
@@ -269,6 +272,54 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      reviews: {
+        Row: {
+          bot_id: string
+          comment: string | null
+          created_at: string
+          guild_id: string
+          id: string
+          stars: number
+          ticket_id: string | null
+          user_discord_id: string
+        }
+        Insert: {
+          bot_id: string
+          comment?: string | null
+          created_at?: string
+          guild_id: string
+          id?: string
+          stars: number
+          ticket_id?: string | null
+          user_discord_id: string
+        }
+        Update: {
+          bot_id?: string
+          comment?: string | null
+          created_at?: string
+          guild_id?: string
+          id?: string
+          stars?: number
+          ticket_id?: string | null
+          user_discord_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reviews_bot_id_fkey"
+            columns: ["bot_id"]
+            isOneToOne: false
+            referencedRelation: "bots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reviews_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       role_bindings: {
         Row: {

@@ -35,6 +35,7 @@ import {
   StopCircle,
   FileText,
   Settings2,
+  Star,
 } from "lucide-react";
 
 interface Bot {
@@ -62,6 +63,14 @@ interface Guild {
   ai_running: boolean;
   ai_product_rules: string;
   ai_knowledge_channel_ids: string[];
+  auto_review_request: boolean;
+}
+
+interface Review {
+  id: string;
+  stars: number;
+  comment: string | null;
+  created_at: string;
 }
 
 interface Ticket {
@@ -120,6 +129,8 @@ const Dashboard = () => {
   const [welcomeMsg, setWelcomeMsg] = useState("");
   const [closeMsg, setCloseMsg] = useState("");
   const [confirmEmoji, setConfirmEmoji] = useState("✅");
+  const [autoReview, setAutoReview] = useState(true);
+  const [reviews, setReviews] = useState<Review[]>([]);
 
   // ticket categories
   const [categories, setCategories] = useState<TicketCategory[]>([]);
@@ -166,13 +177,14 @@ const Dashboard = () => {
           setWelcomeMsg(g.welcome_message);
           setCloseMsg(g.close_message);
           setConfirmEmoji(g.confirmation_emoji);
+          setAutoReview(g.auto_review_request !== false);
           setAiEnabled(!!g.ai_enabled);
           setAiRunning(g.ai_running !== false);
           setAiRules(g.ai_product_rules ?? "");
           const chans = (g.ai_knowledge_channel_ids ?? []) as string[];
           setAiChannels([0, 1, 2, 3].map((i) => chans[i] ?? ""));
 
-          const [{ data: cats }, { data: tks }] = await Promise.all([
+          const [{ data: cats }, { data: tks }, { data: rvs }] = await Promise.all([
             supabase
               .from("ticket_categories").select("*")
               .eq("bot_id", botRow.id).eq("guild_id", g.guild_id)
@@ -184,9 +196,16 @@ const Dashboard = () => {
               .eq("bot_id", botRow.id).eq("guild_id", g.guild_id)
               .order("opened_at", { ascending: false })
               .limit(50),
+            supabase
+              .from("reviews")
+              .select("id,stars,comment,created_at")
+              .eq("bot_id", botRow.id)
+              .order("created_at", { ascending: false })
+              .limit(100),
           ]);
           if (cats) setCategories(cats as TicketCategory[]);
           if (tks) setTickets(tks as Ticket[]);
+          if (rvs) setReviews(rvs as Review[]);
         }
       }
       setFetching(false);
@@ -266,6 +285,7 @@ const Dashboard = () => {
       welcome_message: welcomeMsg.trim() || "Hi! Thanks for reaching out. A staff member will be with you shortly.",
       close_message: closeMsg.trim() || "Your ticket has been closed. Feel free to message us again if you need anything.",
       confirmation_emoji: confirmEmoji.trim() || "✅",
+      auto_review_request: autoReview,
     };
     const { data, error } = await supabase
       .from("guilds")
@@ -440,6 +460,7 @@ const Dashboard = () => {
             guild={guild!}
             tickets={tickets}
             categories={categories}
+            reviews={reviews}
             aiEnabled={aiEnabled}
             setAiEnabled={setAiEnabled}
             aiRunning={aiRunning}
@@ -695,6 +716,14 @@ const Dashboard = () => {
               <Input id="emoji" value={confirmEmoji} onChange={(e) => setConfirmEmoji(e.target.value)} placeholder="✅" className="text-center text-lg" />
             </div>
 
+            <div className="flex items-center justify-between rounded-lg border border-border bg-secondary/30 p-3">
+              <div>
+                <Label className="cursor-pointer">Auto-ask for a review on close</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">When on, the bot DMs a 1–5 star prompt right after <code>?close</code>. Staff can also send it manually with <code>?review</code>.</p>
+              </div>
+              <Switch checked={autoReview} onCheckedChange={setAutoReview} />
+            </div>
+
             <div className="flex items-center gap-3 pt-2">
               <Button onClick={handleSaveGuild} disabled={savingGuild}>
                 {savingGuild ? "Saving…" : guild ? "Update configuration" : "Save configuration"}
@@ -825,6 +854,7 @@ interface ManagementViewProps {
   guild: Guild;
   tickets: Ticket[];
   categories: TicketCategory[];
+  reviews: Review[];
   aiEnabled: boolean;
   setAiEnabled: (v: boolean) => void;
   aiRunning: boolean;
@@ -840,8 +870,17 @@ interface ManagementViewProps {
   onEditSetup: () => void;
 }
 
+function tierLabel(count: number) {
+  if (count >= 100) return "100+ Customers";
+  if (count >= 50) return "50+ Customers";
+  if (count >= 25) return "25+ Customers";
+  if (count >= 10) return "10+ Customers";
+  if (count >= 1) return "1+ Customer";
+  return "No reviews yet";
+}
+
 function ManagementView({
-  bot, guild, tickets, categories,
+  bot, guild, tickets, categories, reviews,
   aiEnabled, setAiEnabled, aiRunning, aiRules, setAiRules,
   aiChannels, setAiChannels, savingAi, onSaveAi,
   onToggleAi, onToggleBot, onRestartBot, onEditSetup,
@@ -990,6 +1029,102 @@ function ManagementView({
           </div>
         </CardContent>
       </Card>
+
+      {(() => {
+        const count = reviews.length;
+        const avg = count ? reviews.reduce((s, r) => s + r.stars, 0) / count : 0;
+        const tier = tierLabel(count);
+        const publicUrl = `${window.location.origin}/reviews/${bot.id}`;
+        return (
+          <Card>
+            <CardHeader>
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Star className="h-5 w-5" /> Customer reviews
+                  </CardTitle>
+                  <CardDescription>
+                    Star ratings collected after each closed ticket. Share your public page below.
+                  </CardDescription>
+                </div>
+                <a
+                  href={publicUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
+                >
+                  Open public page <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="relative overflow-hidden rounded-xl border border-border bg-gradient-to-br from-amber-400/10 via-card to-card p-6">
+                <div className="flex items-center gap-6 flex-wrap">
+                  <div>
+                    <div className="text-5xl font-black tabular-nums">
+                      {avg.toFixed(1)}
+                      <span className="text-xl text-muted-foreground font-medium">/5</span>
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-0.5">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <Star
+                          key={i}
+                          className={`h-4 w-4 ${
+                            i <= Math.round(avg)
+                              ? "text-amber-400 fill-amber-400"
+                              : "text-muted-foreground/30"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-[160px]">
+                    <Badge className="bg-amber-400/15 text-amber-700 dark:text-amber-300 hover:bg-amber-400/20 border-amber-400/30 gap-1.5">
+                      <Star className="h-3.5 w-3.5 fill-current" /> {tier}
+                    </Badge>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {count} review{count === 1 ? "" : "s"} so far
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {reviews.length > 0 && (
+                <div className="space-y-2 max-h-80 overflow-auto pr-1">
+                  {reviews.slice(0, 10).map((r) => (
+                    <div
+                      key={r.id}
+                      className="rounded-lg border border-border bg-secondary/30 p-3"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-0.5">
+                          {[1, 2, 3, 4, 5].map((i) => (
+                            <Star
+                              key={i}
+                              className={`h-3.5 w-3.5 ${
+                                i <= r.stars
+                                  ? "text-amber-400 fill-amber-400"
+                                  : "text-muted-foreground/30"
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <time className="text-xs text-muted-foreground">
+                          {new Date(r.created_at).toLocaleDateString()}
+                        </time>
+                      </div>
+                      {r.comment && (
+                        <p className="mt-1.5 text-sm text-foreground/90">{r.comment}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
+
 
       <Card>
         <CardHeader>
