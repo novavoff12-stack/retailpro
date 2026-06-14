@@ -71,6 +71,7 @@ interface Review {
   stars: number;
   comment: string | null;
   created_at: string;
+  user_username: string | null;
 }
 
 interface Ticket {
