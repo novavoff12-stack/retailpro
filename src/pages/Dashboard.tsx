@@ -71,6 +71,7 @@ interface Review {
   stars: number;
   comment: string | null;
   created_at: string;
+  user_username: string | null;
 }
 
 interface Ticket {
@@ -198,7 +199,7 @@ const Dashboard = () => {
               .limit(50),
             supabase
               .from("reviews")
-              .select("id,stars,comment,created_at")
+              .select("id,stars,comment,created_at,user_username")
               .eq("bot_id", botRow.id)
               .order("created_at", { ascending: false })
               .limit(100),
@@ -1097,17 +1098,22 @@ function ManagementView({
                       className="rounded-lg border border-border bg-secondary/30 p-3"
                     >
                       <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-0.5">
-                          {[1, 2, 3, 4, 5].map((i) => (
-                            <Star
-                              key={i}
-                              className={`h-3.5 w-3.5 ${
-                                i <= r.stars
-                                  ? "text-amber-400 fill-amber-400"
-                                  : "text-muted-foreground/30"
-                              }`}
-                            />
-                          ))}
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex items-center gap-0.5">
+                            {[1, 2, 3, 4, 5].map((i) => (
+                              <Star
+                                key={i}
+                                className={`h-3.5 w-3.5 ${
+                                  i <= r.stars
+                                    ? "text-amber-400 fill-amber-400"
+                                    : "text-muted-foreground/30"
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          {r.user_username && (
+                            <span className="text-xs text-muted-foreground truncate">@{r.user_username}</span>
+                          )}
                         </div>
                         <time className="text-xs text-muted-foreground">
                           {new Date(r.created_at).toLocaleDateString()}

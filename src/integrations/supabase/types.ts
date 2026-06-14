@@ -283,6 +283,7 @@ export type Database = {
           stars: number
           ticket_id: string | null
           user_discord_id: string
+          user_username: string | null
         }
         Insert: {
           bot_id: string
@@ -293,6 +294,7 @@ export type Database = {
           stars: number
           ticket_id?: string | null
           user_discord_id: string
+          user_username?: string | null
         }
         Update: {
           bot_id?: string
@@ -303,6 +305,7 @@ export type Database = {
           stars?: number
           ticket_id?: string | null
           user_discord_id?: string
+          user_username?: string | null
         }
         Relationships: [
           {

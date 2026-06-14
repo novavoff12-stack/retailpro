@@ -538,7 +538,8 @@ Deno.serve(async (req) => {
 
   // MESSAGE_COMPONENT — Discord sends DM select-menu choices here when an interactions endpoint is configured.
   if (interaction.type === 3) {
-    if (interaction.data?.custom_id?.startsWith("cat:")) {
+    const cid = String(interaction.data?.custom_id ?? "");
+    if (cid.startsWith("cat:")) {
       try {
         return await handleCategorySelect(admin, bot, interaction);
       } catch (e) {
@@ -546,7 +547,85 @@ Deno.serve(async (req) => {
         return updateMessage(categoryStatusEmbed("Something went wrong", "Please DM the bot again to open a ticket.", 0xed4245));
       }
     }
+    if (cid.startsWith("review:")) {
+      const [, ticketId, starsRaw] = cid.split(":");
+      const stars = Number(starsRaw);
+      if (!ticketId || !Number.isInteger(stars) || stars < 1 || stars > 5) {
+        return ephemeral("Invalid review button.");
+      }
+      // Respond with a modal asking for an optional comment.
+      return Response.json({
+        type: 9,
+        data: {
+          custom_id: `review_modal:${ticketId}:${stars}`,
+          title: `You rated ${stars} / 5`,
+          components: [{
+            type: 1,
+            components: [{
+              type: 4,
+              custom_id: "comment",
+              label: "Add a note (optional)",
+              style: 2,
+              required: false,
+              max_length: 500,
+              placeholder: "Tell us about your experience…",
+            }],
+          }],
+        },
+      }, { headers: corsHeaders });
+    }
     return ephemeral("Unknown interaction");
+  }
+
+  // MODAL_SUBMIT — review note modal
+  if (interaction.type === 5) {
+    const cid = String(interaction.data?.custom_id ?? "");
+    if (cid.startsWith("review_modal:")) {
+      const [, ticketId, starsRaw] = cid.split(":");
+      const stars = Number(starsRaw);
+      const user = interaction.user ?? interaction.member?.user;
+      const rows: any[] = interaction.data?.components ?? [];
+      const comment = (rows[0]?.components?.[0]?.value ?? "").toString().trim() || null;
+
+      if (!ticketId || !Number.isInteger(stars) || stars < 1 || stars > 5 || !user?.id) {
+        return ephemeral("Invalid review.");
+      }
+      const { data: ticket } = await admin
+        .from("tickets")
+        .select("id,bot_id,guild_id,user_discord_id")
+        .eq("id", ticketId)
+        .eq("bot_id", bot.id)
+        .maybeSingle();
+      if (!ticket || ticket.user_discord_id !== user.id) {
+        return ephemeral("This review prompt isn't for you.");
+      }
+      const { error: insErr } = await admin.from("reviews").insert({
+        bot_id: ticket.bot_id,
+        guild_id: ticket.guild_id,
+        ticket_id: ticket.id,
+        user_discord_id: user.id,
+        user_username: userTag(user),
+        stars,
+        comment,
+      });
+      if (insErr && (insErr as any).code !== "23505") {
+        console.error("insert review", insErr);
+        return ephemeral("⚠️ Could not save your review.");
+      }
+      const already = (insErr as any)?.code === "23505";
+      return Response.json({
+        type: 7,
+        data: {
+          embeds: [{
+            title: already ? "Review already received" : "Thanks for your feedback!",
+            description: `You rated us **${stars} / 5** ${"⭐".repeat(stars)}${comment ? `\n\n> ${comment}` : ""}`,
+            color: 0xfacc15,
+          }],
+          components: [],
+        },
+      }, { headers: corsHeaders });
+    }
+    return ephemeral("Unknown submission");
   }
 
   // APPLICATION_COMMAND

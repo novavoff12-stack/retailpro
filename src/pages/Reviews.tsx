@@ -5,7 +5,7 @@ import { Star } from "lucide-react";
 interface ReviewData {
   bot: { id: string; name: string | null; avatar_url: string | null };
   stats: { count: number; average: number; breakdown: { stars: number; count: number }[] };
-  reviews: { stars: number; comment: string | null; created_at: string }[];
+  reviews: { stars: number; comment: string | null; created_at: string; user_username: string | null }[];
 }
 
 function tierLabel(count: number) {
@@ -153,7 +153,12 @@ const Reviews = () => {
                   className="rounded-xl border border-border bg-card p-4 sm:p-5 shadow-sm"
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <Stars value={r.stars} size={16} />
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Stars value={r.stars} size={16} />
+                      {r.user_username && (
+                        <span className="text-xs text-muted-foreground truncate">@{r.user_username}</span>
+                      )}
+                    </div>
                     <time className="text-xs text-muted-foreground">
                       {new Date(r.created_at).toLocaleDateString()}
                     </time>
