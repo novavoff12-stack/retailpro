@@ -5,7 +5,7 @@ import { Star } from "lucide-react";
 interface ReviewData {
   bot: { id: string; name: string | null; avatar_url: string | null };
   stats: { count: number; average: number; breakdown: { stars: number; count: number }[] };
-  reviews: { stars: number; comment: string | null; created_at: string }[];
+  reviews: { stars: number; comment: string | null; created_at: string; user_username: string | null }[];
 }
 
 function tierLabel(count: number) {
