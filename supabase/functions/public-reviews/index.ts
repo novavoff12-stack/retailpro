@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
       db.from("bots").select("id,bot_name,avatar_url").eq("id", botId).maybeSingle(),
       db
         .from("reviews")
-        .select("stars,comment,created_at")
+        .select("stars,comment,created_at,user_username")
         .eq("bot_id", botId)
         .order("created_at", { ascending: false })
         .limit(50),
