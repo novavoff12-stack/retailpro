@@ -199,7 +199,7 @@ const Dashboard = () => {
               .limit(50),
             supabase
               .from("reviews")
-              .select("id,stars,comment,created_at")
+              .select("id,stars,comment,created_at,user_username")
               .eq("bot_id", botRow.id)
               .order("created_at", { ascending: false })
               .limit(100),
