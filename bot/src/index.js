@@ -681,6 +681,7 @@ function attachHandlers(ctx) {
           guild_id: ticket.guild_id,
           ticket_id: ticket.id,
           user_discord_id: interaction.user.id,
+          user_username: interaction.user.username ?? interaction.user.tag ?? null,
           stars,
         });
         if (insErr && insErr.code !== '23505') {
