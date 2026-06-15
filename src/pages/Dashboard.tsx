@@ -46,6 +46,7 @@ interface Bot {
   bot_name: string | null;
   status: string;
   bot_running: boolean;
+  review_slug: string | null;
 }
 
 interface Guild {
@@ -475,6 +476,7 @@ const Dashboard = () => {
             onToggleBot={toggleBotRunning}
             onRestartBot={restartBot}
             onEditSetup={() => setEditMode(true)}
+            onBotUpdate={(patch) => setBot((b) => (b ? { ...b, ...patch } : b))}
           />
         ) : (
         <>
@@ -869,6 +871,7 @@ interface ManagementViewProps {
   onToggleBot: (next: boolean) => void;
   onRestartBot: () => void;
   onEditSetup: () => void;
+  onBotUpdate: (patch: Partial<Bot>) => void;
 }
 
 function tierLabel(count: number) {
@@ -884,8 +887,27 @@ function ManagementView({
   bot, guild, tickets, categories, reviews,
   aiEnabled, setAiEnabled, aiRunning, aiRules, setAiRules,
   aiChannels, setAiChannels, savingAi, onSaveAi,
-  onToggleAi, onToggleBot, onRestartBot, onEditSetup,
+  onToggleAi, onToggleBot, onRestartBot, onEditSetup, onBotUpdate,
 }: ManagementViewProps) {
+  const [slugInput, setSlugInput] = useState(bot.review_slug ?? "");
+  const [savingSlug, setSavingSlug] = useState(false);
+  const saveSlug = async () => {
+    const v = slugInput.trim().toLowerCase();
+    const next = v === "" ? null : v;
+    if (next && !/^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/.test(next)) {
+      toast.error("Slug must be 3–32 chars: lowercase letters, numbers, hyphens (no leading/trailing hyphen)");
+      return;
+    }
+    setSavingSlug(true);
+    const { error } = await supabase.from("bots").update({ review_slug: next }).eq("id", bot.id);
+    setSavingSlug(false);
+    if (error) {
+      toast.error(error.message.includes("duplicate") ? "That slug is already taken" : error.message);
+      return;
+    }
+    onBotUpdate({ review_slug: next });
+    toast.success(next ? "Custom URL saved" : "Custom URL cleared");
+  };
   const botRunning = bot.bot_running !== false;
   const openTickets = tickets.filter((t) => t.status === "open").length;
 
@@ -1035,7 +1057,7 @@ function ManagementView({
         const count = reviews.length;
         const avg = count ? reviews.reduce((s, r) => s + r.stars, 0) / count : 0;
         const tier = tierLabel(count);
-        const publicUrl = `${window.location.origin}/reviews/${bot.id}`;
+        const publicUrl = `${window.location.origin}/reviews/${bot.review_slug ?? bot.id}`;
         return (
           <Card>
             <CardHeader>
@@ -1059,6 +1081,33 @@ function ManagementView({
               </div>
             </CardHeader>
             <CardContent className="space-y-5">
+              <div className="rounded-xl border border-border bg-secondary/30 p-4 space-y-2">
+                <Label htmlFor="review-slug" className="text-sm font-medium">
+                  Custom URL
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  3–32 lowercase letters, numbers or hyphens. Your page will live at{" "}
+                  <span className="font-mono">{window.location.host}/reviews/{slugInput.trim().toLowerCase() || "your-slug"}</span>
+                </p>
+                <div className="flex gap-2">
+                  <div className="flex-1 flex items-stretch rounded-md border border-input bg-background overflow-hidden focus-within:ring-2 focus-within:ring-ring">
+                    <span className="px-3 flex items-center text-xs text-muted-foreground bg-muted/50 border-r border-input font-mono">
+                      /reviews/
+                    </span>
+                    <Input
+                      id="review-slug"
+                      value={slugInput}
+                      onChange={(e) => setSlugInput(e.target.value)}
+                      placeholder="yourgroup"
+                      maxLength={32}
+                      className="border-0 focus-visible:ring-0 font-mono"
+                    />
+                  </div>
+                  <Button onClick={saveSlug} disabled={savingSlug || slugInput === (bot.review_slug ?? "")}>
+                    {savingSlug ? "Saving…" : "Save"}
+                  </Button>
+                </div>
+              </div>
               <div className="relative overflow-hidden rounded-xl border border-border bg-gradient-to-br from-amber-400/10 via-card to-card p-6">
                 <div className="flex items-center gap-6 flex-wrap">
                   <div>

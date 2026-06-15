@@ -91,6 +91,7 @@ export type Database = {
           id: string
           owner_user_id: string
           public_key: string
+          review_slug: string | null
           status: string
           updated_at: string
           worker_lease_id: string | null
@@ -106,6 +107,7 @@ export type Database = {
           id?: string
           owner_user_id: string
           public_key: string
+          review_slug?: string | null
           status?: string
           updated_at?: string
           worker_lease_id?: string | null
@@ -121,6 +123,7 @@ export type Database = {
           id?: string
           owner_user_id?: string
           public_key?: string
+          review_slug?: string | null
           status?: string
           updated_at?: string
           worker_lease_id?: string | null

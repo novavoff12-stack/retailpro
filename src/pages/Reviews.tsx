@@ -35,15 +35,20 @@ function Stars({ value, size = 20 }: { value: number; size?: number }) {
   );
 }
 
+const UUID_RE = /^[0-9a-f-]{36}$/i;
+
 const Reviews = () => {
-  const { botId } = useParams();
+  const { idOrSlug } = useParams();
   const [data, setData] = useState<ReviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!botId) return;
-    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public-reviews?bot_id=${botId}`;
+    if (!idOrSlug) return;
+    const param = UUID_RE.test(idOrSlug)
+      ? `bot_id=${encodeURIComponent(idOrSlug)}`
+      : `slug=${encodeURIComponent(idOrSlug)}`;
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public-reviews?${param}`;
     fetch(url, {
       headers: { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
     })
@@ -54,7 +59,7 @@ const Reviews = () => {
       .then(setData)
       .catch((e) => setError(String(e.message ?? e)))
       .finally(() => setLoading(false));
-  }, [botId]);
+  }, [idOrSlug]);
 
   if (loading) {
     return (
