@@ -29,7 +29,7 @@ const App = () => (
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/transcript/id/:id" element={<Transcript />} />
-          <Route path="/reviews/:botId" element={<Reviews />} />
+          <Route path="/reviews/:idOrSlug" element={<Reviews />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
