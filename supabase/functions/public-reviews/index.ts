@@ -14,34 +14,51 @@ Deno.serve(async (req) => {
 
   try {
     const url = new URL(req.url);
-    const botId = url.searchParams.get("bot_id");
-    if (!botId || !/^[0-9a-f-]{36}$/i.test(botId)) {
-      return new Response(JSON.stringify({ error: "invalid bot_id" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const botIdParam = url.searchParams.get("bot_id");
+    const slugParam = url.searchParams.get("slug");
 
     const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       auth: { persistSession: false },
     });
 
-    const [{ data: bot }, { data: reviews }] = await Promise.all([
-      db.from("bots").select("id,bot_name,avatar_url").eq("id", botId).maybeSingle(),
-      db
-        .from("reviews")
-        .select("stars,comment,created_at,user_username")
-        .eq("bot_id", botId)
-        .order("created_at", { ascending: false })
-        .limit(50),
-    ]);
+    let botQuery = db.from("bots").select("id,bot_name,avatar_url,review_slug");
+    if (slugParam) {
+      if (!/^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/i.test(slugParam)) {
+        return new Response(JSON.stringify({ error: "invalid slug" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      botQuery = botQuery.ilike("review_slug", slugParam);
+    } else if (botIdParam) {
+      if (!/^[0-9a-f-]{36}$/i.test(botIdParam)) {
+        return new Response(JSON.stringify({ error: "invalid bot_id" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      botQuery = botQuery.eq("id", botIdParam);
+    } else {
+      return new Response(JSON.stringify({ error: "bot_id or slug required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
+    const { data: bot } = await botQuery.maybeSingle();
     if (!bot) {
       return new Response(JSON.stringify({ error: "not found" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const { data: reviews } = await db
+      .from("reviews")
+      .select("stars,comment,created_at,user_username")
+      .eq("bot_id", bot.id)
+      .order("created_at", { ascending: false })
+      .limit(50);
 
     const list = reviews ?? [];
     const count = list.length;
@@ -53,7 +70,7 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-        bot: { id: bot.id, name: bot.bot_name, avatar_url: bot.avatar_url },
+        bot: { id: bot.id, name: bot.bot_name, avatar_url: bot.avatar_url, slug: bot.review_slug },
         stats: { count, average: avg, breakdown },
         reviews: list,
       }),
