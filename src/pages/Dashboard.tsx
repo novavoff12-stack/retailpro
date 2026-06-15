@@ -1081,6 +1081,33 @@ function ManagementView({
               </div>
             </CardHeader>
             <CardContent className="space-y-5">
+              <div className="rounded-xl border border-border bg-secondary/30 p-4 space-y-2">
+                <Label htmlFor="review-slug" className="text-sm font-medium">
+                  Custom URL
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  3–32 lowercase letters, numbers or hyphens. Your page will live at{" "}
+                  <span className="font-mono">{window.location.host}/reviews/{slugInput.trim().toLowerCase() || "your-slug"}</span>
+                </p>
+                <div className="flex gap-2">
+                  <div className="flex-1 flex items-stretch rounded-md border border-input bg-background overflow-hidden focus-within:ring-2 focus-within:ring-ring">
+                    <span className="px-3 flex items-center text-xs text-muted-foreground bg-muted/50 border-r border-input font-mono">
+                      /reviews/
+                    </span>
+                    <Input
+                      id="review-slug"
+                      value={slugInput}
+                      onChange={(e) => setSlugInput(e.target.value)}
+                      placeholder="yourgroup"
+                      maxLength={32}
+                      className="border-0 focus-visible:ring-0 font-mono"
+                    />
+                  </div>
+                  <Button onClick={saveSlug} disabled={savingSlug || slugInput === (bot.review_slug ?? "")}>
+                    {savingSlug ? "Saving…" : "Save"}
+                  </Button>
+                </div>
+              </div>
               <div className="relative overflow-hidden rounded-xl border border-border bg-gradient-to-br from-amber-400/10 via-card to-card p-6">
                 <div className="flex items-center gap-6 flex-wrap">
                   <div>
