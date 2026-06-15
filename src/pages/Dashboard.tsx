@@ -46,6 +46,7 @@ interface Bot {
   bot_name: string | null;
   status: string;
   bot_running: boolean;
+  review_slug: string | null;
 }
 
 interface Guild {
