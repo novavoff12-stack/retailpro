@@ -476,6 +476,7 @@ const Dashboard = () => {
             onToggleBot={toggleBotRunning}
             onRestartBot={restartBot}
             onEditSetup={() => setEditMode(true)}
+            onBotUpdate={(patch) => setBot((b) => (b ? { ...b, ...patch } : b))}
           />
         ) : (
         <>
@@ -870,6 +871,7 @@ interface ManagementViewProps {
   onToggleBot: (next: boolean) => void;
   onRestartBot: () => void;
   onEditSetup: () => void;
+  onBotUpdate: (patch: Partial<Bot>) => void;
 }
 
 function tierLabel(count: number) {
@@ -885,8 +887,27 @@ function ManagementView({
   bot, guild, tickets, categories, reviews,
   aiEnabled, setAiEnabled, aiRunning, aiRules, setAiRules,
   aiChannels, setAiChannels, savingAi, onSaveAi,
-  onToggleAi, onToggleBot, onRestartBot, onEditSetup,
+  onToggleAi, onToggleBot, onRestartBot, onEditSetup, onBotUpdate,
 }: ManagementViewProps) {
+  const [slugInput, setSlugInput] = useState(bot.review_slug ?? "");
+  const [savingSlug, setSavingSlug] = useState(false);
+  const saveSlug = async () => {
+    const v = slugInput.trim().toLowerCase();
+    const next = v === "" ? null : v;
+    if (next && !/^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/.test(next)) {
+      toast.error("Slug must be 3–32 chars: lowercase letters, numbers, hyphens (no leading/trailing hyphen)");
+      return;
+    }
+    setSavingSlug(true);
+    const { error } = await supabase.from("bots").update({ review_slug: next }).eq("id", bot.id);
+    setSavingSlug(false);
+    if (error) {
+      toast.error(error.message.includes("duplicate") ? "That slug is already taken" : error.message);
+      return;
+    }
+    onBotUpdate({ review_slug: next });
+    toast.success(next ? "Custom URL saved" : "Custom URL cleared");
+  };
   const botRunning = bot.bot_running !== false;
   const openTickets = tickets.filter((t) => t.status === "open").length;
 
