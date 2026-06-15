@@ -1057,7 +1057,7 @@ function ManagementView({
         const count = reviews.length;
         const avg = count ? reviews.reduce((s, r) => s + r.stars, 0) / count : 0;
         const tier = tierLabel(count);
-        const publicUrl = `${window.location.origin}/reviews/${bot.id}`;
+        const publicUrl = `${window.location.origin}/reviews/${bot.review_slug ?? bot.id}`;
         return (
           <Card>
             <CardHeader>
