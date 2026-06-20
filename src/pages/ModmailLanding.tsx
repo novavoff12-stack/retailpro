@@ -218,18 +218,6 @@ const ModmailLanding = () => {
         </div>
       </section>
 
-      {/* Hidden block to keep parser happy */}
-      <div className="hidden">
-        <div>
-          <div>
-            <div>{/* removed old mockup tail */}
-                  </div>
-                </div>
-              </main>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* Logos / trust strip */}
       <section className="border-y border-neutral-200/70 bg-white">
