@@ -243,11 +243,10 @@ const ModmailLanding = () => {
           <span>Trusted by community teams</span>
           <div className="flex flex-wrap gap-x-10 gap-y-2 text-neutral-500 font-medium">
             <span>RetailPro</span>
-            <span>NorthMart</span>
-            <span>Stratus</span>
-            <span>Volt Studios</span>
-            <span>Greybox</span>
+            <span>Shoply Shopping</span>
+            <span>Sunclass Airlines</span>
           </div>
+
         </div>
       </section>
 
