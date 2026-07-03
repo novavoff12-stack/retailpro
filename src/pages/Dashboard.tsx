@@ -438,14 +438,13 @@ const Dashboard = () => {
       <header className="border-b border-border bg-card/50 backdrop-blur sticky top-0 z-10">
         <div className="container mx-auto flex items-center justify-between py-4">
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-gradient-accent flex items-center justify-center">
-              <BotIcon className="h-4 w-4 text-accent-foreground" />
-            </div>
+            <img src={retailproLogo} alt="RetailPro" className="h-8 w-8 rounded-lg object-contain" />
             <div>
               <div className="font-bold leading-none">Modmail</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Setup Dashboard</div>
+              <div className="text-xs text-muted-foreground mt-0.5">by RetailPro · Setup Dashboard</div>
             </div>
           </div>
+
           <div className="flex items-center gap-3">
             <span className="text-sm text-muted-foreground hidden sm:inline">{user?.email}</span>
             <Button variant="ghost" size="sm" onClick={signOut}>
