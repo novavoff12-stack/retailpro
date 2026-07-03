@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import retailproLogo from "@/assets/retailpro-logo.jpg";
+
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
