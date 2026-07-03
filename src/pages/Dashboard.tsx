@@ -429,34 +429,38 @@ const Dashboard = () => {
 
   if (loading || fetching) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <p className="text-muted-foreground">Loading…</p>
+      <div className="min-h-screen flex items-center justify-center bg-[#fafaf9]">
+        <p className="text-neutral-500 text-sm">Loading…</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card/50 backdrop-blur sticky top-0 z-10">
-        <div className="container mx-auto flex items-center justify-between py-4">
-          <div className="flex items-center gap-2">
-            <img src={retailproLogo} alt="RetailPro" className="h-8 w-8 rounded-lg object-contain" />
-            <div>
-              <div className="font-bold leading-none">Modmail</div>
-              <div className="text-xs text-muted-foreground mt-0.5">by RetailPro · Setup Dashboard</div>
-            </div>
+    <div className="min-h-screen bg-[#fafaf9] text-neutral-900 antialiased">
+      <header className="sticky top-0 z-40 border-b border-neutral-200/70 bg-[#fafaf9]/85 backdrop-blur-md">
+        <div className="mx-auto max-w-6xl flex items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-2.5">
+            <img src={retailproLogo} alt="RetailPro" className="h-7 w-7 rounded-md object-contain" />
+            <span className="font-semibold text-[15px] tracking-tight">Modmail</span>
+            <span className="hidden sm:inline text-xs text-neutral-400 ml-1">by RetailPro · Setup</span>
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground hidden sm:inline">{user?.email}</span>
-            <Button variant="ghost" size="sm" onClick={signOut}>
+            <span className="text-sm text-neutral-500 hidden sm:inline">{user?.email}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={signOut}
+              className="text-neutral-700 hover:text-neutral-900 hover:bg-neutral-100 rounded-md h-9"
+            >
               <LogOut className="h-4 w-4 mr-2" /> Sign out
             </Button>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto py-10 max-w-4xl space-y-8 px-4">
+      <main className="mx-auto max-w-4xl px-6 py-14 space-y-10">
+
         {guildConfigured && isReady && !editMode ? (
           <ManagementView
             bot={bot!}
@@ -490,53 +494,51 @@ const Dashboard = () => {
           </div>
         )}
         <section>
-          <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="h-4 w-4 text-accent" />
-            <span className="text-sm font-medium text-accent">
-              {guildConfigured && isReady ? "All set" : credsValid ? "Almost there" : "Let's get you set up"}
-            </span>
+          <div className="text-xs uppercase tracking-[0.18em] text-neutral-500 mb-4">
+            {guildConfigured && isReady ? "All set" : credsValid ? "Almost there" : "Get started"}
           </div>
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
-            {guildConfigured && isReady ? "Your modmail bot is live" : "Set up your Modmail bot"}
+          <h1 className="text-4xl md:text-5xl font-semibold tracking-[-0.03em] leading-[1.05] text-neutral-900">
+            {guildConfigured && isReady ? "Your modmail bot is live." : "Set up your Modmail bot."}
           </h1>
-          <p className="text-muted-foreground mt-2 max-w-2xl">
+          <p className="mt-5 text-[15px] text-neutral-600 leading-relaxed max-w-2xl">
             Users DM your bot directly to open tickets. Staff reply with{" "}
-            <code className="text-foreground">?reply</code> and close with{" "}
-            <code className="text-foreground">?close</code>.
+            <code className="text-neutral-900 font-mono text-[13px]">?reply</code> and close with{" "}
+            <code className="text-neutral-900 font-mono text-[13px]">?close</code>.
           </p>
 
-          <div className="mt-8 grid sm:grid-cols-4 gap-3">
+          <div className="mt-10 grid sm:grid-cols-4 gap-3">
             {STEPS.map((s) => {
               const done = s.id < currentStep || (s.id === 4 && guildConfigured) || (s.id === 3 && isReady);
               const active = s.id === currentStep && !done;
               return (
                 <div
                   key={s.id}
-                  className={`rounded-xl border p-4 transition-smooth ${
+                  className={`rounded-xl border p-4 transition-colors bg-white ${
                     active
-                      ? "border-accent bg-accent/5 shadow-soft"
+                      ? "border-neutral-900"
                       : done
-                      ? "border-border bg-secondary/40"
-                      : "border-border"
+                      ? "border-neutral-200"
+                      : "border-neutral-200"
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-2">
                     {done ? (
-                      <CheckCircle2 className="h-5 w-5 text-accent" />
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                     ) : (
-                      <Circle className={`h-5 w-5 ${active ? "text-accent" : "text-muted-foreground"}`} />
+                      <Circle className={`h-4 w-4 ${active ? "text-neutral-900" : "text-neutral-400"}`} />
                     )}
-                    <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                      Step {s.id}
+                    <span className="font-mono text-xs text-neutral-400">
+                      0{s.id}
                     </span>
                   </div>
-                  <div className="font-semibold text-sm">{s.title}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{s.desc}</div>
+                  <div className="font-semibold text-[15px] tracking-tight text-neutral-900">{s.title}</div>
+                  <div className="text-[13px] text-neutral-500 mt-1">{s.desc}</div>
                 </div>
               );
             })}
           </div>
         </section>
+
 
         {/* Step 1 */}
         <Card>
