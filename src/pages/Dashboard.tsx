@@ -429,34 +429,38 @@ const Dashboard = () => {
 
   if (loading || fetching) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <p className="text-muted-foreground">Loading…</p>
+      <div className="min-h-screen flex items-center justify-center bg-[#fafaf9]">
+        <p className="text-neutral-500 text-sm">Loading…</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card/50 backdrop-blur sticky top-0 z-10">
-        <div className="container mx-auto flex items-center justify-between py-4">
-          <div className="flex items-center gap-2">
-            <img src={retailproLogo} alt="RetailPro" className="h-8 w-8 rounded-lg object-contain" />
-            <div>
-              <div className="font-bold leading-none">Modmail</div>
-              <div className="text-xs text-muted-foreground mt-0.5">by RetailPro · Setup Dashboard</div>
-            </div>
+    <div className="min-h-screen bg-[#fafaf9] text-neutral-900 antialiased">
+      <header className="sticky top-0 z-40 border-b border-neutral-200/70 bg-[#fafaf9]/85 backdrop-blur-md">
+        <div className="mx-auto max-w-6xl flex items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-2.5">
+            <img src={retailproLogo} alt="RetailPro" className="h-7 w-7 rounded-md object-contain" />
+            <span className="font-semibold text-[15px] tracking-tight">Modmail</span>
+            <span className="hidden sm:inline text-xs text-neutral-400 ml-1">by RetailPro · Setup</span>
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground hidden sm:inline">{user?.email}</span>
-            <Button variant="ghost" size="sm" onClick={signOut}>
+            <span className="text-sm text-neutral-500 hidden sm:inline">{user?.email}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={signOut}
+              className="text-neutral-700 hover:text-neutral-900 hover:bg-neutral-100 rounded-md h-9"
+            >
               <LogOut className="h-4 w-4 mr-2" /> Sign out
             </Button>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto py-10 max-w-4xl space-y-8 px-4">
+      <main className="mx-auto max-w-4xl px-6 py-14 space-y-10">
+
         {guildConfigured && isReady && !editMode ? (
           <ManagementView
             bot={bot!}
