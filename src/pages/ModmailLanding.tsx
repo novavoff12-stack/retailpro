@@ -183,7 +183,7 @@ const ModmailLanding = () => {
                     </div>
                   </div>
 
-                  {/* AI suggestion embed */}
+                  {/* Bot auto-reply */}
                   <div className="flex gap-3">
                     <div className="h-9 w-9 rounded-md bg-neutral-800 border border-white/10 flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-emerald-300">AI</div>
                     <div className="min-w-0 flex-1">
@@ -192,17 +192,35 @@ const ModmailLanding = () => {
                         <span className="text-[10px] px-1.5 py-px rounded bg-emerald-500/80 text-white font-semibold uppercase tracking-wider">app</span>
                         <span className="text-[11px] text-neutral-500">Today at 14:04</span>
                       </div>
-                      <div className="mt-1 border-l-[3px] border-emerald-500 rounded-r bg-white/[0.03] px-3 py-2">
-                        <div className="text-[11px] uppercase tracking-wider text-emerald-400 font-semibold mb-1">Suggested reply</div>
-                        <div className="text-[13px] text-neutral-200 leading-snug">Could you try re-joining the server to refresh permissions? If the register still won't open, please send a screenshot — I'll get this sorted for you.</div>
-                        <div className="mt-2 flex gap-2 text-[11px]">
-                          <span className="px-2 py-0.5 rounded bg-emerald-500/90 text-white font-medium">Send</span>
-                          <span className="px-2 py-0.5 rounded bg-white/5 text-neutral-300">Edit</span>
-                          <span className="px-2 py-0.5 rounded bg-white/5 text-neutral-300">Dismiss</span>
-                        </div>
-                      </div>
+                      <div className="text-neutral-200 leading-snug">Have you turned on HTTPS requests in your game settings?</div>
                     </div>
                   </div>
+
+                  {/* User no */}
+                  <div className="flex gap-3">
+                    <div className="h-9 w-9 rounded-full bg-gradient-to-br from-indigo-400 to-purple-600 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-white font-medium">lukasz_w</span>
+                        <span className="text-[11px] text-neutral-500">Today at 14:05</span>
+                      </div>
+                      <div className="text-neutral-200 leading-snug">no</div>
+                    </div>
+                  </div>
+
+                  {/* Bot forward */}
+                  <div className="flex gap-3">
+                    <div className="h-9 w-9 rounded-md bg-neutral-800 border border-white/10 flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-emerald-300">AI</div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-white font-medium">Modmail</span>
+                        <span className="text-[10px] px-1.5 py-px rounded bg-emerald-500/80 text-white font-semibold uppercase tracking-wider">app</span>
+                        <span className="text-[11px] text-neutral-500">Today at 14:05</span>
+                      </div>
+                      <div className="text-neutral-200 leading-snug">Got it — I'm forwarding you to a team member now.</div>
+                    </div>
+                  </div>
+
                 </div>
 
                 {/* Input */}
