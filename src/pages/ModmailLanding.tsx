@@ -347,7 +347,7 @@ const ModmailLanding = () => {
               <Link to="/login">Start free</Link>
             </Button>
             <ul className="mt-7 space-y-3 text-sm text-neutral-700">
-              {["Unlimited tickets", "Unlimited staff seats", "Bring your own bot", "Transcripts & reviews", "Community support"].map(
+              {["Unlimited tickets", "Unlimited staff seats", "Bring your own bot", "Automatic AI replies", "Transcripts & reviews", "Community support"].map(
                 (f) => (
                   <li key={f} className="flex items-center gap-2.5">
                     <Check className="h-4 w-4 text-neutral-900" /> {f}
@@ -357,9 +357,9 @@ const ModmailLanding = () => {
             </ul>
           </div>
           <div className="rounded-xl border border-neutral-900 bg-neutral-950 text-neutral-100 p-8 relative overflow-hidden">
-            <div className="text-sm font-medium text-neutral-400 mb-2">Team (coming soon)</div>
+            <div className="text-sm font-medium text-neutral-400 mb-2">Premium (coming soon)</div>
             <div className="flex items-baseline gap-1 mb-1">
-              <span className="text-5xl font-semibold tracking-tight">£9</span>
+              <span className="text-5xl font-semibold tracking-tight">$1</span>
               <span className="text-neutral-400">/month</span>
             </div>
             <p className="text-sm text-neutral-400 mb-6">For growing communities that need more.</p>
@@ -367,7 +367,7 @@ const ModmailLanding = () => {
               Notify me
             </Button>
             <ul className="mt-7 space-y-3 text-sm text-neutral-300">
-              {["Everything in Beta", "Priority queue & SLA", "AI reply suggestions", "Custom review page domain", "Email support"].map(
+              {["Everything in Beta", "Priority queue & SLA", "Custom review page domain", "Advanced analytics", "Priority Discord support"].map(
                 (f) => (
                   <li key={f} className="flex items-center gap-2.5">
                     <Check className="h-4 w-4 text-neutral-100" /> {f}
@@ -375,6 +375,7 @@ const ModmailLanding = () => {
                 ),
               )}
             </ul>
+
           </div>
         </div>
       </section>
