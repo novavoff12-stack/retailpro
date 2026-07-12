@@ -219,6 +219,18 @@ const Dashboard = () => {
     })();
   }, [user]);
 
+  // Poll the bot row every 10s so validation errors and boot status pushed by
+  // the worker appear on the dashboard without a manual refresh.
+  useEffect(() => {
+    if (!user || !bot) return;
+    const iv = setInterval(async () => {
+      const { data } = await supabase
+        .from("bots").select("*").eq("id", bot.id).maybeSingle();
+      if (data) setBot(data as Bot);
+    }, 10_000);
+    return () => clearInterval(iv);
+  }, [user, bot?.id]);
+
   const handleSave = async () => {
     if (!user) return;
     if (!appId.trim() || !pubKey.trim() || !token.trim()) {
