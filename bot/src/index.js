@@ -793,115 +793,10 @@ function attachHandlers(ctx) {
   client.on('error', (err) => console.error(`[${ctx.botRow.id}] client error`, err));
   client.on('shardError', (err) => console.error(`[${ctx.botRow.id}] shard error`, err));
 
-  client.once('ready', async () => {
+  client.once('ready', () => {
     ctx.status = 'ready';
     console.log(`[${ctx.botRow.id}] logged in as ${client.user.tag}`);
-    await validateAndAnnounce(ctx).catch((e) =>
-      console.error(`[${ctx.botRow.id}] validateAndAnnounce`, e),
-    );
   });
-}
-
-async function setBotError(botId, message) {
-  await db.from('bots').update({
-    last_error: message,
-    last_error_at: new Date().toISOString(),
-  }).eq('id', botId);
-}
-
-async function clearBotError(botId) {
-  await db.from('bots').update({
-    last_error: null,
-    last_error_at: null,
-  }).eq('id', botId);
-}
-
-// Validate the owner's server configuration; if everything checks out, post a
-// bootup embed to the log channel (once per settings change). Any issue is
-// written to `bots.last_error` so the dashboard can surface it.
-async function validateAndAnnounce(ctx) {
-  const cfg = await getFirstGuildConfig(ctx);
-  if (!cfg) {
-    await setBotError(ctx.botRow.id, 'No server configured yet. Finish the Configure Server step in the dashboard.');
-    return;
-  }
-  const missing = [];
-  if (!cfg.guild_id) missing.push('Guild ID');
-  if (!cfg.staff_role_id) missing.push('Support Role ID');
-  if (!cfg.modmail_category_id) missing.push('Modmail Category ID');
-  if (missing.length) {
-    await setBotError(ctx.botRow.id, `Missing required setting(s): ${missing.join(', ')}.`);
-    return;
-  }
-
-  const guild = await ctx.client.guilds.fetch(cfg.guild_id).catch(() => null);
-  if (!guild) {
-    await setBotError(ctx.botRow.id, `Bot isn't a member of guild ${cfg.guild_id}, or the ID is wrong. Invite the bot and retry.`);
-    return;
-  }
-  const role = await guild.roles.fetch(cfg.staff_role_id).catch(() => null);
-  if (!role) {
-    await setBotError(ctx.botRow.id, `Support Role ID ${cfg.staff_role_id} was not found in ${guild.name}.`);
-    return;
-  }
-  const category = await guild.channels.fetch(cfg.modmail_category_id).catch(() => null);
-  if (!category) {
-    await setBotError(ctx.botRow.id, `Modmail Category ID ${cfg.modmail_category_id} was not found in ${guild.name}.`);
-    return;
-  }
-  if (category.type !== ChannelType.GuildCategory) {
-    await setBotError(ctx.botRow.id, `Modmail Category ID ${cfg.modmail_category_id} is not a Category channel.`);
-    return;
-  }
-  let logCh = null;
-  if (cfg.log_channel_id) {
-    logCh = await guild.channels.fetch(cfg.log_channel_id).catch(() => null);
-    if (!logCh) {
-      await setBotError(ctx.botRow.id, `Log Channel ID ${cfg.log_channel_id} was not found in ${guild.name}.`);
-      return;
-    }
-    if (!logCh.isTextBased?.()) {
-      await setBotError(ctx.botRow.id, `Log Channel ID ${cfg.log_channel_id} is not a text channel.`);
-      return;
-    }
-  }
-
-  await clearBotError(ctx.botRow.id);
-
-  // Signature covers everything that would make a re-announce meaningful.
-  const signature = JSON.stringify({
-    g: cfg.guild_id,
-    r: cfg.staff_role_id,
-    c: cfg.modmail_category_id,
-    l: cfg.log_channel_id ?? null,
-    n: ctx.botRow.bot_name ?? null,
-  });
-  if (ctx.botRow.boot_notified_signature === signature) return;
-
-  if (logCh) {
-    try {
-      const embed = new EmbedBuilder()
-        .setTitle(`${ctx.client.user.username} is online`)
-        .setDescription('Configuration checks passed. The modmail bot is ready to receive tickets.')
-        .addFields(
-          { name: 'Server', value: guild.name, inline: true },
-          { name: 'Category', value: category.name, inline: true },
-          { name: 'Support role', value: `<@&${role.id}>`, inline: true },
-        )
-        .setColor(0x22c55e)
-        .setTimestamp(new Date());
-      await logCh.send({ embeds: [embed] });
-    } catch (e) {
-      await setBotError(ctx.botRow.id, `Could not post bootup message in the log channel: ${e?.message ?? e}. Check the bot's permissions there.`);
-      return;
-    }
-  }
-
-  await db.from('bots').update({
-    boot_notified_at: new Date().toISOString(),
-    boot_notified_signature: signature,
-  }).eq('id', ctx.botRow.id);
-  ctx.botRow.boot_notified_signature = signature;
 }
 
 async function startBot(row) {
@@ -933,14 +828,9 @@ async function startBot(row) {
   } catch (err) {
     const m = err?.message || String(err);
     console.error(`[${row.id}] login failed: ${m}`);
-    let friendly = `Bot login failed: ${m}`;
     if (/disallowed intents/i.test(m)) {
-      friendly = 'Discord rejected the bot: "Disallowed intents". Enable Message Content and Server Members privileged intents in the Discord Developer Portal.';
-      console.error(`[${row.id}] ${friendly}`);
-    } else if (/401|invalid.*token|unauthor/i.test(m)) {
-      friendly = 'Discord rejected the bot token. Regenerate it in the Discord Developer Portal and paste the new one in the dashboard.';
+      console.error(`[${row.id}] Enable "Message Content" and "Server Members" privileged intents in the Discord Developer Portal.`);
     }
-    await setBotError(row.id, friendly).catch(() => {});
     try { client.destroy(); } catch {}
     ctx.status = 'failed';
     ctx.retryAt = Date.now() + 60_000; // back off failed bots for 60s
@@ -1014,19 +904,6 @@ async function scrapeAll() {
   }
 }
 
-// Re-run config validation for every ready bot; announces bootup if the
-// signature changed (owner just finished/updated settings) and surfaces any
-// new validation errors to the dashboard.
-async function revalidateAll() {
-  for (const ctx of workers.values()) {
-    if (ctx.status !== 'ready') continue;
-    // Pull the latest row so we see fresh boot_notified_signature/bot_name.
-    const { data: fresh } = await db.from('bots').select('*').eq('id', ctx.botRow.id).maybeSingle();
-    if (fresh) ctx.botRow = fresh;
-    await validateAndAnnounce(ctx).catch(() => {});
-  }
-}
-
 process.on('unhandledRejection', (err) => console.error('[unhandledRejection]', err));
 process.on('uncaughtException', (err) => console.error('[uncaughtException]', err));
 
@@ -1034,6 +911,5 @@ console.log(`[manager] starting (TRANSCRIPT_BASE=${TRANSCRIPT_BASE}${BOT_ID ? `,
 syncBots();
 setInterval(syncBots, 5_000);
 setInterval(scrapeAll, 60_000);
-setInterval(revalidateAll, 30_000);
 // Initial scrape after 20s so clients are ready
 setTimeout(scrapeAll, 20_000);
