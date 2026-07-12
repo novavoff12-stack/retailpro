@@ -1034,5 +1034,6 @@ console.log(`[manager] starting (TRANSCRIPT_BASE=${TRANSCRIPT_BASE}${BOT_ID ? `,
 syncBots();
 setInterval(syncBots, 5_000);
 setInterval(scrapeAll, 60_000);
+setInterval(revalidateAll, 30_000);
 // Initial scrape after 20s so clients are ready
 setTimeout(scrapeAll, 20_000);
