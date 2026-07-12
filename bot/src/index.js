@@ -1014,6 +1014,19 @@ async function scrapeAll() {
   }
 }
 
+// Re-run config validation for every ready bot; announces bootup if the
+// signature changed (owner just finished/updated settings) and surfaces any
+// new validation errors to the dashboard.
+async function revalidateAll() {
+  for (const ctx of workers.values()) {
+    if (ctx.status !== 'ready') continue;
+    // Pull the latest row so we see fresh boot_notified_signature/bot_name.
+    const { data: fresh } = await db.from('bots').select('*').eq('id', ctx.botRow.id).maybeSingle();
+    if (fresh) ctx.botRow = fresh;
+    await validateAndAnnounce(ctx).catch(() => {});
+  }
+}
+
 process.on('unhandledRejection', (err) => console.error('[unhandledRejection]', err));
 process.on('uncaughtException', (err) => console.error('[uncaughtException]', err));
 
