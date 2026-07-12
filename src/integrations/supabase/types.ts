@@ -84,15 +84,11 @@ export type Database = {
         Row: {
           application_id: string
           avatar_url: string | null
-          boot_notified_at: string | null
-          boot_notified_signature: string | null
           bot_name: string | null
           bot_running: boolean
           bot_token: string
           created_at: string
           id: string
-          last_error: string | null
-          last_error_at: string | null
           owner_user_id: string
           public_key: string
           review_slug: string | null
@@ -104,15 +100,11 @@ export type Database = {
         Insert: {
           application_id: string
           avatar_url?: string | null
-          boot_notified_at?: string | null
-          boot_notified_signature?: string | null
           bot_name?: string | null
           bot_running?: boolean
           bot_token: string
           created_at?: string
           id?: string
-          last_error?: string | null
-          last_error_at?: string | null
           owner_user_id: string
           public_key: string
           review_slug?: string | null
@@ -124,15 +116,11 @@ export type Database = {
         Update: {
           application_id?: string
           avatar_url?: string | null
-          boot_notified_at?: string | null
-          boot_notified_signature?: string | null
           bot_name?: string | null
           bot_running?: boolean
           bot_token?: string
           created_at?: string
           id?: string
-          last_error?: string | null
-          last_error_at?: string | null
           owner_user_id?: string
           public_key?: string
           review_slug?: string | null
