@@ -933,9 +933,14 @@ async function startBot(row) {
   } catch (err) {
     const m = err?.message || String(err);
     console.error(`[${row.id}] login failed: ${m}`);
+    let friendly = `Bot login failed: ${m}`;
     if (/disallowed intents/i.test(m)) {
-      console.error(`[${row.id}] Enable "Message Content" and "Server Members" privileged intents in the Discord Developer Portal.`);
+      friendly = 'Discord rejected the bot: "Disallowed intents". Enable Message Content and Server Members privileged intents in the Discord Developer Portal.';
+      console.error(`[${row.id}] ${friendly}`);
+    } else if (/401|invalid.*token|unauthor/i.test(m)) {
+      friendly = 'Discord rejected the bot token. Regenerate it in the Discord Developer Portal and paste the new one in the dashboard.';
     }
+    await setBotError(row.id, friendly).catch(() => {});
     try { client.destroy(); } catch {}
     ctx.status = 'failed';
     ctx.retryAt = Date.now() + 60_000; // back off failed bots for 60s
