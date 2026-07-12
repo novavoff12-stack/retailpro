@@ -49,6 +49,9 @@ interface Bot {
   status: string;
   bot_running: boolean;
   review_slug: string | null;
+  last_error: string | null;
+  last_error_at: string | null;
+  boot_notified_at: string | null;
 }
 
 interface Guild {
@@ -215,6 +218,18 @@ const Dashboard = () => {
       setFetching(false);
     })();
   }, [user]);
+
+  // Poll the bot row every 10s so validation errors and boot status pushed by
+  // the worker appear on the dashboard without a manual refresh.
+  useEffect(() => {
+    if (!user || !bot) return;
+    const iv = setInterval(async () => {
+      const { data } = await supabase
+        .from("bots").select("*").eq("id", bot.id).maybeSingle();
+      if (data) setBot(data as Bot);
+    }, 10_000);
+    return () => clearInterval(iv);
+  }, [user, bot?.id]);
 
   const handleSave = async () => {
     if (!user) return;
@@ -460,6 +475,33 @@ const Dashboard = () => {
       </header>
 
       <main className="mx-auto max-w-4xl px-6 py-14 space-y-10">
+
+        {bot?.last_error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-start gap-3">
+            <span aria-hidden className="mt-0.5 text-red-500">⚠</span>
+            <div className="flex-1 space-y-1">
+              <p className="font-medium">Bot can't start with your current settings</p>
+              <p className="text-red-700/90 leading-relaxed">{bot.last_error}</p>
+              {bot.last_error_at && (
+                <p className="text-xs text-red-600/70">
+                  Detected {new Date(bot.last_error_at).toLocaleString()}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+        {!bot?.last_error && bot?.boot_notified_at && (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-start gap-3">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600" />
+            <div className="flex-1">
+              <p className="font-medium">Bot is online and validated</p>
+              <p className="text-emerald-700/90">
+                Bootup announcement posted {new Date(bot.boot_notified_at).toLocaleString()}.
+              </p>
+            </div>
+          </div>
+        )}
+
 
         {guildConfigured && isReady && !editMode ? (
           <ManagementView
