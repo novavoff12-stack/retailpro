@@ -952,6 +952,20 @@ async function syncBots() {
       continue;
     }
 
+    // Do not boot the Discord client until the dashboard setup wizard is
+    // done. Surface a friendly message so the owner sees it on the dashboard.
+    const setup = await isSetupComplete(row.id);
+    if (!setup.ok) {
+      if (workers.has(row.id)) {
+        console.log(`[manager] stopping ${row.id} (setup incomplete)`);
+        await stopBot(row.id, '(setup incomplete)');
+      }
+      if (row.last_error !== setup.reason) {
+        await setBotError(row.id, setup.reason);
+      }
+      continue;
+    }
+
     const existing = workers.get(row.id);
     if (!existing) {
       if (!(await claimBotLease(row.id))) continue;
