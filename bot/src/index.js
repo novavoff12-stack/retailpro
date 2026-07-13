@@ -866,9 +866,13 @@ function attachHandlers(ctx) {
   client.on('error', (err) => console.error(`[${ctx.botRow.id}] client error`, err));
   client.on('shardError', (err) => console.error(`[${ctx.botRow.id}] shard error`, err));
 
-  client.once('ready', () => {
+  client.once('ready', async () => {
     ctx.status = 'ready';
     console.log(`[${ctx.botRow.id}] logged in as ${client.user.tag}`);
+    await clearBotError(ctx.botRow.id);
+    ctx.botRow.fail_count = 0;
+    const setup = await isSetupComplete(ctx.botRow.id);
+    if (setup.ok) await postBootAnnouncement(ctx, setup.guild);
   });
 }
 
@@ -901,12 +905,21 @@ async function startBot(row) {
   } catch (err) {
     const m = err?.message || String(err);
     console.error(`[${row.id}] login failed: ${m}`);
+    let friendly = `Bot failed to connect: ${m}`;
     if (/disallowed intents/i.test(m)) {
-      console.error(`[${row.id}] Enable "Message Content" and "Server Members" privileged intents in the Discord Developer Portal.`);
+      friendly = 'Bot failed to connect: enable "Message Content" and "Server Members" privileged intents in the Discord Developer Portal.';
+    } else if (/token/i.test(m) || /401/.test(m)) {
+      friendly = 'Bot failed to connect: the bot token is invalid. Re-paste it in the dashboard.';
     }
     try { client.destroy(); } catch {}
     ctx.status = 'failed';
-    ctx.retryAt = Date.now() + 60_000; // back off failed bots for 60s
+
+    const next = await bumpFail(row.id, row.fail_count ?? 0, friendly);
+    ctx.botRow.fail_count = next;
+    // Retry quickly for the first 2 attempts, then back off long once the
+    // error is surfaced to the dashboard.
+    ctx.retryAt = Date.now() + (next >= 3 ? 5 * 60_000 : 15_000);
+    console.log(`[${row.id}] fail_count=${next} — next retry in ${next >= 3 ? '5m' : '15s'}`);
   }
 }
 
