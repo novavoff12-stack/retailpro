@@ -90,6 +90,7 @@ export type Database = {
           bot_running: boolean
           bot_token: string
           created_at: string
+          fail_count: number
           id: string
           last_error: string | null
           last_error_at: string | null
@@ -110,6 +111,7 @@ export type Database = {
           bot_running?: boolean
           bot_token: string
           created_at?: string
+          fail_count?: number
           id?: string
           last_error?: string | null
           last_error_at?: string | null
@@ -130,6 +132,7 @@ export type Database = {
           bot_running?: boolean
           bot_token?: string
           created_at?: string
+          fail_count?: number
           id?: string
           last_error?: string | null
           last_error_at?: string | null

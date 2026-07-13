@@ -232,6 +232,79 @@ async function claimBotLease(botId) {
   return data === true;
 }
 
+// A bot is only "setup complete" once the owner has picked a staff role,
+// a modmail category, and a log channel for at least one guild.
+async function isSetupComplete(botId) {
+  const { data, error } = await db
+    .from('guilds')
+    .select('guild_id,staff_role_id,modmail_category_id,log_channel_id')
+    .eq('bot_id', botId);
+  if (error) {
+    console.error(`[manager] isSetupComplete ${botId}`, error);
+    return { ok: false, reason: 'Could not read your setup. Try again in a moment.' };
+  }
+  const complete = (data ?? []).find(
+    (g) => g.staff_role_id && g.modmail_category_id && g.log_channel_id,
+  );
+  if (!complete) {
+    return {
+      ok: false,
+      reason: 'Setup is not finished yet. Pick a staff role, modmail category, and log channel in the dashboard to start the bot.',
+    };
+  }
+  return { ok: true, guild: complete };
+}
+
+async function setBotError(botId, msg) {
+  await db.from('bots').update({
+    last_error: msg,
+    last_error_at: new Date().toISOString(),
+  }).eq('id', botId);
+}
+
+async function clearBotError(botId) {
+  await db.from('bots').update({
+    last_error: null,
+    last_error_at: null,
+    fail_count: 0,
+  }).eq('id', botId);
+}
+
+async function bumpFail(botId, currentFail, msg) {
+  const next = (currentFail ?? 0) + 1;
+  const update = { fail_count: next };
+  if (next >= 3) {
+    update.last_error = msg;
+    update.last_error_at = new Date().toISOString();
+  }
+  await db.from('bots').update(update).eq('id', botId);
+  return next;
+}
+
+async function postBootAnnouncement(ctx, cfg) {
+  const sig = `${cfg.guild_id}:${cfg.staff_role_id}:${cfg.modmail_category_id}:${cfg.log_channel_id}`;
+  if (ctx.botRow.boot_notified_signature === sig) return;
+  try {
+    const guild = await ctx.client.guilds.fetch(cfg.guild_id).catch(() => null);
+    if (!guild) return;
+    const ch = await guild.channels.fetch(cfg.log_channel_id).catch(() => null);
+    if (!ch?.isTextBased?.()) return;
+    const embed = new EmbedBuilder()
+      .setTitle('Modmail bot is online')
+      .setDescription('Setup complete. Users can DM the bot to open a ticket.')
+      .setColor(0x57f287)
+      .setTimestamp(new Date());
+    await ch.send({ embeds: [embed] });
+    await db.from('bots').update({
+      boot_notified_at: new Date().toISOString(),
+      boot_notified_signature: sig,
+    }).eq('id', ctx.botRow.id);
+    ctx.botRow.boot_notified_signature = sig;
+  } catch (e) {
+    console.error(`[${ctx.botRow.id}] postBootAnnouncement`, e);
+  }
+}
+
 async function createTicketChannel(ctx, cfg, guild, user, category) {
   const overwrites = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
@@ -793,9 +866,13 @@ function attachHandlers(ctx) {
   client.on('error', (err) => console.error(`[${ctx.botRow.id}] client error`, err));
   client.on('shardError', (err) => console.error(`[${ctx.botRow.id}] shard error`, err));
 
-  client.once('ready', () => {
+  client.once('ready', async () => {
     ctx.status = 'ready';
     console.log(`[${ctx.botRow.id}] logged in as ${client.user.tag}`);
+    await clearBotError(ctx.botRow.id);
+    ctx.botRow.fail_count = 0;
+    const setup = await isSetupComplete(ctx.botRow.id);
+    if (setup.ok) await postBootAnnouncement(ctx, setup.guild);
   });
 }
 
@@ -828,12 +905,21 @@ async function startBot(row) {
   } catch (err) {
     const m = err?.message || String(err);
     console.error(`[${row.id}] login failed: ${m}`);
+    let friendly = `Bot failed to connect: ${m}`;
     if (/disallowed intents/i.test(m)) {
-      console.error(`[${row.id}] Enable "Message Content" and "Server Members" privileged intents in the Discord Developer Portal.`);
+      friendly = 'Bot failed to connect: enable "Message Content" and "Server Members" privileged intents in the Discord Developer Portal.';
+    } else if (/token/i.test(m) || /401/.test(m)) {
+      friendly = 'Bot failed to connect: the bot token is invalid. Re-paste it in the dashboard.';
     }
     try { client.destroy(); } catch {}
     ctx.status = 'failed';
-    ctx.retryAt = Date.now() + 60_000; // back off failed bots for 60s
+
+    const next = await bumpFail(row.id, row.fail_count ?? 0, friendly);
+    ctx.botRow.fail_count = next;
+    // Retry quickly for the first 2 attempts, then back off long once the
+    // error is surfaced to the dashboard.
+    ctx.retryAt = Date.now() + (next >= 3 ? 5 * 60_000 : 15_000);
+    console.log(`[${row.id}] fail_count=${next} — next retry in ${next >= 3 ? '5m' : '15s'}`);
   }
 }
 
@@ -862,6 +948,20 @@ async function syncBots() {
       if (workers.has(row.id)) {
         console.log(`[manager] stopping ${row.id} (paused via dashboard)`);
         await stopBot(row.id, '(paused)');
+      }
+      continue;
+    }
+
+    // Do not boot the Discord client until the dashboard setup wizard is
+    // done. Surface a friendly message so the owner sees it on the dashboard.
+    const setup = await isSetupComplete(row.id);
+    if (!setup.ok) {
+      if (workers.has(row.id)) {
+        console.log(`[manager] stopping ${row.id} (setup incomplete)`);
+        await stopBot(row.id, '(setup incomplete)');
+      }
+      if (row.last_error !== setup.reason) {
+        await setBotError(row.id, setup.reason);
       }
       continue;
     }
