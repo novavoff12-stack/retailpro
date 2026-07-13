@@ -232,6 +232,79 @@ async function claimBotLease(botId) {
   return data === true;
 }
 
+// A bot is only "setup complete" once the owner has picked a staff role,
+// a modmail category, and a log channel for at least one guild.
+async function isSetupComplete(botId) {
+  const { data, error } = await db
+    .from('guilds')
+    .select('guild_id,staff_role_id,modmail_category_id,log_channel_id')
+    .eq('bot_id', botId);
+  if (error) {
+    console.error(`[manager] isSetupComplete ${botId}`, error);
+    return { ok: false, reason: 'Could not read your setup. Try again in a moment.' };
+  }
+  const complete = (data ?? []).find(
+    (g) => g.staff_role_id && g.modmail_category_id && g.log_channel_id,
+  );
+  if (!complete) {
+    return {
+      ok: false,
+      reason: 'Setup is not finished yet. Pick a staff role, modmail category, and log channel in the dashboard to start the bot.',
+    };
+  }
+  return { ok: true, guild: complete };
+}
+
+async function setBotError(botId, msg) {
+  await db.from('bots').update({
+    last_error: msg,
+    last_error_at: new Date().toISOString(),
+  }).eq('id', botId);
+}
+
+async function clearBotError(botId) {
+  await db.from('bots').update({
+    last_error: null,
+    last_error_at: null,
+    fail_count: 0,
+  }).eq('id', botId);
+}
+
+async function bumpFail(botId, currentFail, msg) {
+  const next = (currentFail ?? 0) + 1;
+  const update = { fail_count: next };
+  if (next >= 3) {
+    update.last_error = msg;
+    update.last_error_at = new Date().toISOString();
+  }
+  await db.from('bots').update(update).eq('id', botId);
+  return next;
+}
+
+async function postBootAnnouncement(ctx, cfg) {
+  const sig = `${cfg.guild_id}:${cfg.staff_role_id}:${cfg.modmail_category_id}:${cfg.log_channel_id}`;
+  if (ctx.botRow.boot_notified_signature === sig) return;
+  try {
+    const guild = await ctx.client.guilds.fetch(cfg.guild_id).catch(() => null);
+    if (!guild) return;
+    const ch = await guild.channels.fetch(cfg.log_channel_id).catch(() => null);
+    if (!ch?.isTextBased?.()) return;
+    const embed = new EmbedBuilder()
+      .setTitle('Modmail bot is online')
+      .setDescription('Setup complete. Users can DM the bot to open a ticket.')
+      .setColor(0x57f287)
+      .setTimestamp(new Date());
+    await ch.send({ embeds: [embed] });
+    await db.from('bots').update({
+      boot_notified_at: new Date().toISOString(),
+      boot_notified_signature: sig,
+    }).eq('id', ctx.botRow.id);
+    ctx.botRow.boot_notified_signature = sig;
+  } catch (e) {
+    console.error(`[${ctx.botRow.id}] postBootAnnouncement`, e);
+  }
+}
+
 async function createTicketChannel(ctx, cfg, guild, user, category) {
   const overwrites = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
