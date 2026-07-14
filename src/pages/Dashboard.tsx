@@ -109,9 +109,15 @@ const STEPS = [
   { id: 4, title: "Configure Server", desc: "Guild, role, category, messages" },
 ];
 
+const MAX_BOTS_PER_ACCOUNT = 3;
+
 const Dashboard = () => {
   const { user, loading, signOut } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedBotId = searchParams.get("bot");
+  const isCreatingNew = searchParams.get("bot") === "new";
+  const [bots, setBots] = useState<Bot[]>([]);
   const [bot, setBot] = useState<Bot | null>(null);
   const [guild, setGuild] = useState<Guild | null>(null);
   const [fetching, setFetching] = useState(true);
