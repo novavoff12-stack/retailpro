@@ -547,6 +547,65 @@ const Dashboard = () => {
 
       <main className="mx-auto max-w-4xl px-6 py-14 space-y-10">
 
+        {bots.length > 0 && !bot && !isCreatingNew ? (
+          <section>
+            <div className="text-xs uppercase tracking-[0.18em] text-neutral-500 mb-4">Your bots</div>
+            <h1 className="text-4xl md:text-5xl font-semibold tracking-[-0.03em] leading-[1.05] text-neutral-900">
+              Choose a bot to manage
+            </h1>
+            <p className="mt-5 text-[15px] text-neutral-600 leading-relaxed max-w-2xl">
+              You can run up to {MAX_BOTS_PER_ACCOUNT} modmail bots on one account.
+              {" "}
+              <span className="text-neutral-500">({bots.length}/{MAX_BOTS_PER_ACCOUNT} used)</span>
+            </p>
+
+            <div className="mt-10 grid sm:grid-cols-2 gap-4">
+              {bots.map((b) => (
+                <button
+                  key={b.id}
+                  onClick={() => setSearchParams({ bot: b.id })}
+                  className="text-left rounded-xl border border-neutral-200 bg-white p-5 hover:border-neutral-900 transition-colors"
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <BotIcon className="h-4 w-4 text-neutral-500" />
+                    <span className="font-semibold text-[15px] tracking-tight">
+                      {b.bot_name ?? "Unnamed bot"}
+                    </span>
+                    {b.status === "ready" ? (
+                      <Badge variant="secondary" className="ml-auto">Ready</Badge>
+                    ) : (
+                      <Badge variant="outline" className="ml-auto">Setup</Badge>
+                    )}
+                  </div>
+                  <div className="font-mono text-xs text-neutral-500 truncate">
+                    App {b.application_id}
+                  </div>
+                  {b.last_error && (
+                    <div className="mt-3 text-xs text-red-700 line-clamp-2">⚠ {b.last_error}</div>
+                  )}
+                </button>
+              ))}
+
+              {bots.length < MAX_BOTS_PER_ACCOUNT && (
+                <button
+                  onClick={() => setSearchParams({ bot: "new" })}
+                  className="text-left rounded-xl border border-dashed border-neutral-300 bg-white p-5 hover:border-neutral-900 transition-colors flex flex-col items-start justify-center min-h-[132px]"
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <Plus className="h-4 w-4" />
+                    <span className="font-semibold text-[15px] tracking-tight">Create new bot</span>
+                  </div>
+                  <p className="text-[13px] text-neutral-500">
+                    {MAX_BOTS_PER_ACCOUNT - bots.length} slot{MAX_BOTS_PER_ACCOUNT - bots.length === 1 ? "" : "s"} left on your account.
+                  </p>
+                </button>
+              )}
+            </div>
+          </section>
+        ) : (
+        <>
+
+
         {bot?.last_error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-start gap-3">
             <span aria-hidden className="mt-0.5 text-red-500">⚠</span>
