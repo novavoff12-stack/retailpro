@@ -275,25 +275,52 @@ const Dashboard = () => {
       toast.error("Application ID should be a 17–20 digit Discord snowflake");
       return;
     }
+    if (!bot && bots.length >= MAX_BOTS_PER_ACCOUNT) {
+      toast.error(`You can have at most ${MAX_BOTS_PER_ACCOUNT} bots per account.`);
+      return;
+    }
     setSaving(true);
-    const { data, error } = await supabase
-      .from("bots")
-      .upsert(
-        {
+    let data: Bot | null = null;
+    let error: { message: string } | null = null;
+    if (bot) {
+      const res = await supabase
+        .from("bots")
+        .update({
+          application_id: appId.trim(),
+          public_key: pubKey.trim(),
+          bot_token: token.trim(),
+          bot_name: name.trim() || null,
+        })
+        .eq("id", bot.id)
+        .select()
+        .single();
+      data = res.data as Bot; error = res.error;
+    } else {
+      const res = await supabase
+        .from("bots")
+        .insert({
           owner_user_id: user.id,
           application_id: appId.trim(),
           public_key: pubKey.trim(),
           bot_token: token.trim(),
           bot_name: name.trim() || null,
           status: "active",
-        },
-        { onConflict: "owner_user_id" },
-      )
-      .select()
-      .single();
+        })
+        .select()
+        .single();
+      data = res.data as Bot; error = res.error;
+    }
     setSaving(false);
-    if (error) return toast.error(error.message);
-    setBot(data as Bot);
+    if (error || !data) return toast.error(error?.message ?? "Failed to save bot");
+    setBot(data);
+    setBots((prev) => {
+      const existing = prev.find((b) => b.id === data!.id);
+      return existing ? prev.map((b) => (b.id === data!.id ? data! : b)) : [...prev, data!];
+    });
+    // If we just created a new bot, switch the URL param to its id
+    if (!bot) {
+      setSearchParams({ bot: data.id });
+    }
     toast.success(bot ? "Bot updated" : "Bot saved — continue to step 3");
   };
 
