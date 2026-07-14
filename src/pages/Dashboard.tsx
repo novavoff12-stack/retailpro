@@ -522,6 +522,16 @@ const Dashboard = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            {(bot || isCreatingNew) && bots.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSearchParams({})}
+                className="h-9"
+              >
+                <ArrowRight className="h-4 w-4 mr-2 rotate-180" /> My bots
+              </Button>
+            )}
             <span className="text-sm text-neutral-500 hidden sm:inline">{user?.email}</span>
             <Button
               variant="ghost"
