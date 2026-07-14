@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import retailproLogo from "@/assets/retailpro-logo.jpg";
 
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -109,9 +109,15 @@ const STEPS = [
   { id: 4, title: "Configure Server", desc: "Guild, role, category, messages" },
 ];
 
+const MAX_BOTS_PER_ACCOUNT = 3;
+
 const Dashboard = () => {
   const { user, loading, signOut } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedBotId = searchParams.get("bot");
+  const isCreatingNew = searchParams.get("bot") === "new";
+  const [bots, setBots] = useState<Bot[]>([]);
   const [bot, setBot] = useState<Bot | null>(null);
   const [guild, setGuild] = useState<Guild | null>(null);
   const [fetching, setFetching] = useState(true);
@@ -162,62 +168,90 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (!user) return;
+    setFetching(true);
     (async () => {
-      const { data: botRow } = await supabase
-        .from("bots").select("*").eq("owner_user_id", user.id).maybeSingle();
-      if (botRow) {
-        setBot(botRow as Bot);
-        setAppId(botRow.application_id);
-        setPubKey(botRow.public_key);
-        setToken(botRow.bot_token);
-        setName(botRow.bot_name ?? "");
+      const { data: allBots } = await supabase
+        .from("bots")
+        .select("*")
+        .eq("owner_user_id", user.id)
+        .order("created_at", { ascending: true });
+      const list = (allBots ?? []) as Bot[];
+      setBots(list);
 
-        const { data: g } = await supabase
-          .from("guilds").select("*").eq("bot_id", botRow.id).maybeSingle();
-        if (g) {
-          setGuild(g as Guild);
-          setGuildId(g.guild_id);
-          setGuildName(g.guild_name ?? "");
-          setStaffRoleId(g.staff_role_id ?? "");
-          setCategoryId(g.modmail_category_id ?? "");
-          setLogChannelId(g.log_channel_id ?? "");
-          setWelcomeMsg(g.welcome_message);
-          setCloseMsg(g.close_message);
-          setConfirmEmoji(g.confirmation_emoji);
-          setAutoReview(g.auto_review_request !== false);
-          setAiEnabled(!!g.ai_enabled);
-          setAiRunning(g.ai_running !== false);
-          setAiRules(g.ai_product_rules ?? "");
-          const chans = (g.ai_knowledge_channel_ids ?? []) as string[];
-          setAiChannels([0, 1, 2, 3].map((i) => chans[i] ?? ""));
+      // Reset form state for "new" or when nothing selected
+      const resetForms = () => {
+        setBot(null);
+        setGuild(null);
+        setAppId(""); setPubKey(""); setToken(""); setName("");
+        setGuildId(""); setGuildName(""); setStaffRoleId("");
+        setCategoryId(""); setLogChannelId("");
+        setWelcomeMsg(""); setCloseMsg(""); setConfirmEmoji("✅");
+        setAutoReview(true); setAiEnabled(false); setAiRunning(true);
+        setAiRules(""); setAiChannels(["", "", "", ""]);
+        setCategories([]); setTickets([]); setReviews([]);
+      };
 
-          const [{ data: cats }, { data: tks }, { data: rvs }] = await Promise.all([
-            supabase
-              .from("ticket_categories").select("*")
-              .eq("bot_id", botRow.id).eq("guild_id", g.guild_id)
-              .order("sort_order", { ascending: true })
-              .order("name", { ascending: true }),
-            supabase
-              .from("tickets")
-              .select("id,user_discord_id,category_name,status,opened_at,closed_at,closed_by_username")
-              .eq("bot_id", botRow.id).eq("guild_id", g.guild_id)
-              .order("opened_at", { ascending: false })
-              .limit(50),
-            supabase
-              .from("reviews")
-              .select("id,stars,comment,created_at,user_username")
-              .eq("bot_id", botRow.id)
-              .order("created_at", { ascending: false })
-              .limit(100),
-          ]);
-          if (cats) setCategories(cats as TicketCategory[]);
-          if (tks) setTickets(tks as Ticket[]);
-          if (rvs) setReviews(rvs as Review[]);
-        }
+      const botRow = selectedBotId && selectedBotId !== "new"
+        ? list.find((b) => b.id === selectedBotId) ?? null
+        : null;
+
+      if (!botRow) {
+        resetForms();
+        setFetching(false);
+        return;
+      }
+
+      setBot(botRow);
+      setAppId(botRow.application_id);
+      setPubKey(botRow.public_key);
+      setToken(botRow.bot_token);
+      setName(botRow.bot_name ?? "");
+
+      const { data: g } = await supabase
+        .from("guilds").select("*").eq("bot_id", botRow.id).maybeSingle();
+      if (g) {
+        setGuild(g as Guild);
+        setGuildId(g.guild_id);
+        setGuildName(g.guild_name ?? "");
+        setStaffRoleId(g.staff_role_id ?? "");
+        setCategoryId(g.modmail_category_id ?? "");
+        setLogChannelId(g.log_channel_id ?? "");
+        setWelcomeMsg(g.welcome_message);
+        setCloseMsg(g.close_message);
+        setConfirmEmoji(g.confirmation_emoji);
+        setAutoReview(g.auto_review_request !== false);
+        setAiEnabled(!!g.ai_enabled);
+        setAiRunning(g.ai_running !== false);
+        setAiRules(g.ai_product_rules ?? "");
+        const chans = (g.ai_knowledge_channel_ids ?? []) as string[];
+        setAiChannels([0, 1, 2, 3].map((i) => chans[i] ?? ""));
+
+        const [{ data: cats }, { data: tks }, { data: rvs }] = await Promise.all([
+          supabase
+            .from("ticket_categories").select("*")
+            .eq("bot_id", botRow.id).eq("guild_id", g.guild_id)
+            .order("sort_order", { ascending: true })
+            .order("name", { ascending: true }),
+          supabase
+            .from("tickets")
+            .select("id,user_discord_id,category_name,status,opened_at,closed_at,closed_by_username")
+            .eq("bot_id", botRow.id).eq("guild_id", g.guild_id)
+            .order("opened_at", { ascending: false })
+            .limit(50),
+          supabase
+            .from("reviews")
+            .select("id,stars,comment,created_at,user_username")
+            .eq("bot_id", botRow.id)
+            .order("created_at", { ascending: false })
+            .limit(100),
+        ]);
+        if (cats) setCategories(cats as TicketCategory[]);
+        if (tks) setTickets(tks as Ticket[]);
+        if (rvs) setReviews(rvs as Review[]);
       }
       setFetching(false);
     })();
-  }, [user]);
+  }, [user, selectedBotId]);
 
   // Poll the bot row every 10s so validation errors and boot status pushed by
   // the worker appear on the dashboard without a manual refresh.
@@ -241,25 +275,52 @@ const Dashboard = () => {
       toast.error("Application ID should be a 17–20 digit Discord snowflake");
       return;
     }
+    if (!bot && bots.length >= MAX_BOTS_PER_ACCOUNT) {
+      toast.error(`You can have at most ${MAX_BOTS_PER_ACCOUNT} bots per account.`);
+      return;
+    }
     setSaving(true);
-    const { data, error } = await supabase
-      .from("bots")
-      .upsert(
-        {
+    let data: Bot | null = null;
+    let error: { message: string } | null = null;
+    if (bot) {
+      const res = await supabase
+        .from("bots")
+        .update({
+          application_id: appId.trim(),
+          public_key: pubKey.trim(),
+          bot_token: token.trim(),
+          bot_name: name.trim() || null,
+        })
+        .eq("id", bot.id)
+        .select()
+        .single();
+      data = res.data as Bot; error = res.error;
+    } else {
+      const res = await supabase
+        .from("bots")
+        .insert({
           owner_user_id: user.id,
           application_id: appId.trim(),
           public_key: pubKey.trim(),
           bot_token: token.trim(),
           bot_name: name.trim() || null,
           status: "active",
-        },
-        { onConflict: "owner_user_id" },
-      )
-      .select()
-      .single();
+        })
+        .select()
+        .single();
+      data = res.data as Bot; error = res.error;
+    }
     setSaving(false);
-    if (error) return toast.error(error.message);
-    setBot(data as Bot);
+    if (error || !data) return toast.error(error?.message ?? "Failed to save bot");
+    setBot(data);
+    setBots((prev) => {
+      const existing = prev.find((b) => b.id === data!.id);
+      return existing ? prev.map((b) => (b.id === data!.id ? data! : b)) : [...prev, data!];
+    });
+    // If we just created a new bot, switch the URL param to its id
+    if (!bot) {
+      setSearchParams({ bot: data.id });
+    }
     toast.success(bot ? "Bot updated" : "Bot saved — continue to step 3");
   };
 
@@ -461,6 +522,16 @@ const Dashboard = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            {(bot || isCreatingNew) && bots.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSearchParams({})}
+                className="h-9"
+              >
+                <ArrowRight className="h-4 w-4 mr-2 rotate-180" /> My bots
+              </Button>
+            )}
             <span className="text-sm text-neutral-500 hidden sm:inline">{user?.email}</span>
             <Button
               variant="ghost"
@@ -475,6 +546,65 @@ const Dashboard = () => {
       </header>
 
       <main className="mx-auto max-w-4xl px-6 py-14 space-y-10">
+
+        {bots.length > 0 && !bot && !isCreatingNew ? (
+          <section>
+            <div className="text-xs uppercase tracking-[0.18em] text-neutral-500 mb-4">Your bots</div>
+            <h1 className="text-4xl md:text-5xl font-semibold tracking-[-0.03em] leading-[1.05] text-neutral-900">
+              Choose a bot to manage
+            </h1>
+            <p className="mt-5 text-[15px] text-neutral-600 leading-relaxed max-w-2xl">
+              You can run up to {MAX_BOTS_PER_ACCOUNT} modmail bots on one account.
+              {" "}
+              <span className="text-neutral-500">({bots.length}/{MAX_BOTS_PER_ACCOUNT} used)</span>
+            </p>
+
+            <div className="mt-10 grid sm:grid-cols-2 gap-4">
+              {bots.map((b) => (
+                <button
+                  key={b.id}
+                  onClick={() => setSearchParams({ bot: b.id })}
+                  className="text-left rounded-xl border border-neutral-200 bg-white p-5 hover:border-neutral-900 transition-colors"
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <BotIcon className="h-4 w-4 text-neutral-500" />
+                    <span className="font-semibold text-[15px] tracking-tight">
+                      {b.bot_name ?? "Unnamed bot"}
+                    </span>
+                    {b.status === "ready" ? (
+                      <Badge variant="secondary" className="ml-auto">Ready</Badge>
+                    ) : (
+                      <Badge variant="outline" className="ml-auto">Setup</Badge>
+                    )}
+                  </div>
+                  <div className="font-mono text-xs text-neutral-500 truncate">
+                    App {b.application_id}
+                  </div>
+                  {b.last_error && (
+                    <div className="mt-3 text-xs text-red-700 line-clamp-2">⚠ {b.last_error}</div>
+                  )}
+                </button>
+              ))}
+
+              {bots.length < MAX_BOTS_PER_ACCOUNT && (
+                <button
+                  onClick={() => setSearchParams({ bot: "new" })}
+                  className="text-left rounded-xl border border-dashed border-neutral-300 bg-white p-5 hover:border-neutral-900 transition-colors flex flex-col items-start justify-center min-h-[132px]"
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <Plus className="h-4 w-4" />
+                    <span className="font-semibold text-[15px] tracking-tight">Create new bot</span>
+                  </div>
+                  <p className="text-[13px] text-neutral-500">
+                    {MAX_BOTS_PER_ACCOUNT - bots.length} slot{MAX_BOTS_PER_ACCOUNT - bots.length === 1 ? "" : "s"} left on your account.
+                  </p>
+                </button>
+              )}
+            </div>
+          </section>
+        ) : (
+        <>
+
 
         {bot?.last_error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-start gap-3">
@@ -888,6 +1018,8 @@ const Dashboard = () => {
             Railway bot deployment guide
           </a>.
         </p>
+        </>
+        )}
         </>
         )}
       </main>
