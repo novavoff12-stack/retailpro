@@ -46,6 +46,7 @@ interface Bot {
   public_key: string;
   bot_token: string;
   bot_name: string | null;
+  avatar_url: string | null;
   status: string;
   bot_running: boolean;
   review_slug: string | null;
