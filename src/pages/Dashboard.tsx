@@ -517,9 +517,17 @@ const Dashboard = () => {
       <header className="sticky top-0 z-40 border-b border-neutral-200/70 bg-[#fafaf9]/85 backdrop-blur-md">
         <div className="mx-auto max-w-6xl flex items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2.5">
-            <img src={retailproLogo} alt="RetailPro" className="h-7 w-7 rounded-md object-contain" />
-            <span className="font-semibold text-[15px] tracking-tight">Modmail</span>
-            <span className="hidden sm:inline text-xs text-neutral-400 ml-1">by RetailPro · Setup</span>
+            {bot?.avatar_url ? (
+              <img src={bot.avatar_url} alt={bot.bot_name ?? "Bot"} className="h-7 w-7 rounded-md object-cover ring-1 ring-neutral-200" />
+            ) : (
+              <img src={retailproLogo} alt="RetailPro" className="h-7 w-7 rounded-md object-contain" />
+            )}
+            <span className="font-semibold text-[15px] tracking-tight">
+              {bot?.bot_name ?? "Modmail"}
+            </span>
+            <span className="hidden sm:inline text-xs text-neutral-400 ml-1">
+              {bot ? "· dashboard" : "by RetailPro · Setup"}
+            </span>
           </div>
 
           <div className="flex items-center gap-3">
