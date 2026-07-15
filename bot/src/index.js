@@ -869,6 +869,16 @@ function attachHandlers(ctx) {
   client.once('ready', async () => {
     ctx.status = 'ready';
     console.log(`[${ctx.botRow.id}] logged in as ${client.user.tag}`);
+    // Force an online presence so the bot shows as online 24/7,
+    // not just after it processes its first DM/interaction.
+    try {
+      client.user.setPresence({
+        status: 'online',
+        activities: [{ name: 'DMs for support', type: 2 /* Listening */ }],
+      });
+    } catch (e) {
+      console.error(`[${ctx.botRow.id}] setPresence failed`, e);
+    }
     await clearBotError(ctx.botRow.id);
     ctx.botRow.fail_count = 0;
     const setup = await isSetupComplete(ctx.botRow.id);
