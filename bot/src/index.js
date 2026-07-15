@@ -507,6 +507,21 @@ function attachHandlers(ctx) {
 
       // --- DM from a user ---
       if (msg.channel.type === ChannelType.DM) {
+        if (msg.content.trim().toLowerCase() === '?help') {
+          const helpEmbed = new EmbedBuilder()
+            .setTitle('Modmail — Help')
+            .setDescription(
+              'Just send me a **direct message** and I will open a private ticket with the staff team.\n\n' +
+              '• Send text, images, or files — everything is forwarded to staff.\n' +
+              '• If categories are set up, pick one from the menu I send you.\n' +
+              '• Staff will reply back to you here in DMs.\n\n' +
+              '**Commands**\n' +
+              '`?help` — show this message',
+            )
+            .setColor(0x5865f2);
+          await msg.reply({ embeds: [helpEmbed] });
+          return;
+        }
         const cfg = await getFirstGuildConfig(ctx);
         if (!cfg || !cfg.modmail_category_id) {
           await msg.reply('Modmail is not configured yet. Please try again later.');
