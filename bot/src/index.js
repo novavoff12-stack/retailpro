@@ -507,6 +507,21 @@ function attachHandlers(ctx) {
 
       // --- DM from a user ---
       if (msg.channel.type === ChannelType.DM) {
+        if (msg.content.trim().toLowerCase() === '?help') {
+          const helpEmbed = new EmbedBuilder()
+            .setTitle('Modmail — Help')
+            .setDescription(
+              'Just send me a **direct message** and I will open a private ticket with the staff team.\n\n' +
+              '• Send text, images, or files — everything is forwarded to staff.\n' +
+              '• If categories are set up, pick one from the menu I send you.\n' +
+              '• Staff will reply back to you here in DMs.\n\n' +
+              '**Commands**\n' +
+              '`?help` — show this message',
+            )
+            .setColor(0x5865f2);
+          await msg.reply({ embeds: [helpEmbed] });
+          return;
+        }
         const cfg = await getFirstGuildConfig(ctx);
         if (!cfg || !cfg.modmail_category_id) {
           await msg.reply('Modmail is not configured yet. Please try again later.');
@@ -647,6 +662,21 @@ function attachHandlers(ctx) {
           }
           const files = [...msg.attachments.values()].map((a) => a.url);
           await sendStaffReply(text, files);
+          return;
+        }
+
+        if (content.toLowerCase() === '?help') {
+          const helpEmbed = new EmbedBuilder()
+            .setTitle('Modmail — Staff Commands')
+            .setColor(0x5865f2)
+            .addFields(
+              { name: '`?reply <message>`', value: 'Send a reply to the ticket user (attachments supported).' },
+              { name: '`?close [reason]`', value: 'Close this ticket, DM the user, log a transcript, and delete the channel.' },
+              { name: '`?review`', value: 'DM the user a star-rating prompt for this ticket.' },
+              { name: '`?aistop` / `?aistart`', value: 'Pause or resume AI auto-replies for this ticket.' },
+              { name: '`?help`', value: 'Show this message.' },
+            );
+          await msg.reply({ embeds: [helpEmbed] });
           return;
         }
 
@@ -869,6 +899,16 @@ function attachHandlers(ctx) {
   client.once('ready', async () => {
     ctx.status = 'ready';
     console.log(`[${ctx.botRow.id}] logged in as ${client.user.tag}`);
+    // Force an online presence so the bot shows as online 24/7,
+    // not just after it processes its first DM/interaction.
+    try {
+      client.user.setPresence({
+        status: 'online',
+        activities: [{ name: 'DMs for support', type: 2 /* Listening */ }],
+      });
+    } catch (e) {
+      console.error(`[${ctx.botRow.id}] setPresence failed`, e);
+    }
     await clearBotError(ctx.botRow.id);
     ctx.botRow.fail_count = 0;
     const setup = await isSetupComplete(ctx.botRow.id);
