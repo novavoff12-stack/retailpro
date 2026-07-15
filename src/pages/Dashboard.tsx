@@ -46,6 +46,7 @@ interface Bot {
   public_key: string;
   bot_token: string;
   bot_name: string | null;
+  avatar_url: string | null;
   status: string;
   bot_running: boolean;
   review_slug: string | null;
@@ -516,9 +517,17 @@ const Dashboard = () => {
       <header className="sticky top-0 z-40 border-b border-neutral-200/70 bg-[#fafaf9]/85 backdrop-blur-md">
         <div className="mx-auto max-w-6xl flex items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2.5">
-            <img src={retailproLogo} alt="RetailPro" className="h-7 w-7 rounded-md object-contain" />
-            <span className="font-semibold text-[15px] tracking-tight">Modmail</span>
-            <span className="hidden sm:inline text-xs text-neutral-400 ml-1">by RetailPro · Setup</span>
+            {bot?.avatar_url ? (
+              <img src={bot.avatar_url} alt={bot.bot_name ?? "Bot"} className="h-7 w-7 rounded-md object-cover ring-1 ring-neutral-200" />
+            ) : (
+              <img src={retailproLogo} alt="RetailPro" className="h-7 w-7 rounded-md object-contain" />
+            )}
+            <span className="font-semibold text-[15px] tracking-tight">
+              {bot?.bot_name ?? "Modmail"}
+            </span>
+            <span className="hidden sm:inline text-xs text-neutral-400 ml-1">
+              {bot ? "· dashboard" : "by RetailPro · Setup"}
+            </span>
           </div>
 
           <div className="flex items-center gap-3">
@@ -549,54 +558,118 @@ const Dashboard = () => {
 
         {bots.length > 0 && !bot && !isCreatingNew ? (
           <section>
-            <div className="text-xs uppercase tracking-[0.18em] text-neutral-500 mb-4">Your bots</div>
-            <h1 className="text-4xl md:text-5xl font-semibold tracking-[-0.03em] leading-[1.05] text-neutral-900">
-              Choose a bot to manage
-            </h1>
-            <p className="mt-5 text-[15px] text-neutral-600 leading-relaxed max-w-2xl">
-              You can run up to {MAX_BOTS_PER_ACCOUNT} modmail bots on one account.
-              {" "}
-              <span className="text-neutral-500">({bots.length}/{MAX_BOTS_PER_ACCOUNT} used)</span>
-            </p>
+            <div className="flex items-end justify-between flex-wrap gap-4 mb-10">
+              <div>
+                <div className="text-xs uppercase tracking-[0.18em] text-neutral-500 mb-4">Your workspace</div>
+                <h1 className="text-4xl md:text-5xl font-semibold tracking-[-0.03em] leading-[1.05] text-neutral-900">
+                  Your modmail bots
+                </h1>
+                <p className="mt-5 text-[15px] text-neutral-600 leading-relaxed max-w-2xl">
+                  Manage up to {MAX_BOTS_PER_ACCOUNT} bots from one account. Click a bot to configure it,
+                  or spin up a new one.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <div className="font-mono text-2xl font-semibold tracking-tight text-neutral-900 tabular-nums">
+                    {bots.length}<span className="text-neutral-300">/{MAX_BOTS_PER_ACCOUNT}</span>
+                  </div>
+                  <div className="text-[11px] uppercase tracking-wider text-neutral-500">slots used</div>
+                </div>
+                {bots.length < MAX_BOTS_PER_ACCOUNT && (
+                  <Button
+                    onClick={() => setSearchParams({ bot: "new" })}
+                    className="h-10 rounded-lg bg-neutral-900 text-white hover:bg-neutral-800"
+                  >
+                    <Plus className="h-4 w-4 mr-2" /> New bot
+                  </Button>
+                )}
+              </div>
+            </div>
 
-            <div className="mt-10 grid sm:grid-cols-2 gap-4">
-              {bots.map((b) => (
-                <button
-                  key={b.id}
-                  onClick={() => setSearchParams({ bot: b.id })}
-                  className="text-left rounded-xl border border-neutral-200 bg-white p-5 hover:border-neutral-900 transition-colors"
-                >
-                  <div className="flex items-center gap-2 mb-3">
-                    <BotIcon className="h-4 w-4 text-neutral-500" />
-                    <span className="font-semibold text-[15px] tracking-tight">
-                      {b.bot_name ?? "Unnamed bot"}
-                    </span>
-                    {b.status === "ready" ? (
-                      <Badge variant="secondary" className="ml-auto">Ready</Badge>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {bots.map((b) => {
+                const ready = b.status === "ready";
+                const running = b.bot_running && !b.last_error;
+                return (
+                  <button
+                    key={b.id}
+                    onClick={() => setSearchParams({ bot: b.id })}
+                    className="group relative text-left rounded-2xl border border-neutral-200 bg-white p-5 hover:border-neutral-900 hover:shadow-[0_10px_40px_-15px_rgba(0,0,0,0.15)] transition-all duration-200"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="relative shrink-0">
+                        {b.avatar_url ? (
+                          <img
+                            src={b.avatar_url}
+                            alt={b.bot_name ?? "Bot avatar"}
+                            className="h-12 w-12 rounded-xl object-cover ring-1 ring-neutral-200"
+                          />
+                        ) : (
+                          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-neutral-100 to-neutral-200 ring-1 ring-neutral-200 flex items-center justify-center">
+                            <BotIcon className="h-5 w-5 text-neutral-500" />
+                          </div>
+                        )}
+                        <span
+                          className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full ring-2 ring-white ${
+                            b.last_error ? "bg-red-500" : running && ready ? "bg-emerald-500" : ready ? "bg-neutral-300" : "bg-amber-500"
+                          }`}
+                          aria-hidden
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-[15px] tracking-tight text-neutral-900 truncate">
+                          {b.bot_name ?? "Unnamed bot"}
+                        </div>
+                        <div className="mt-0.5 font-mono text-[11px] text-neutral-500 truncate">
+                          {b.application_id}
+                        </div>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className={`shrink-0 text-[10px] uppercase tracking-wider font-medium ${
+                          b.last_error
+                            ? "border-red-200 text-red-700 bg-red-50"
+                            : ready && running
+                            ? "border-emerald-200 text-emerald-700 bg-emerald-50"
+                            : ready
+                            ? "border-neutral-200 text-neutral-600 bg-neutral-50"
+                            : "border-amber-200 text-amber-700 bg-amber-50"
+                        }`}
+                      >
+                        {b.last_error ? "Error" : ready && running ? "Live" : ready ? "Paused" : "Setup"}
+                      </Badge>
+                    </div>
+
+                    {b.last_error ? (
+                      <div className="mt-4 text-xs text-red-700 line-clamp-2 border-t border-neutral-100 pt-3">
+                        ⚠ {b.last_error}
+                      </div>
                     ) : (
-                      <Badge variant="outline" className="ml-auto">Setup</Badge>
+                      <div className="mt-4 border-t border-neutral-100 pt-3 flex items-center justify-between text-[12px] text-neutral-500">
+                        <span>{ready ? "Configured" : "Complete setup"}</span>
+                        <span className="text-neutral-900 opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1 font-medium">
+                          Manage <ArrowRight className="h-3 w-3" />
+                        </span>
+                      </div>
                     )}
-                  </div>
-                  <div className="font-mono text-xs text-neutral-500 truncate">
-                    App {b.application_id}
-                  </div>
-                  {b.last_error && (
-                    <div className="mt-3 text-xs text-red-700 line-clamp-2">⚠ {b.last_error}</div>
-                  )}
-                </button>
-              ))}
+                  </button>
+                );
+              })}
 
               {bots.length < MAX_BOTS_PER_ACCOUNT && (
                 <button
                   onClick={() => setSearchParams({ bot: "new" })}
-                  className="text-left rounded-xl border border-dashed border-neutral-300 bg-white p-5 hover:border-neutral-900 transition-colors flex flex-col items-start justify-center min-h-[132px]"
+                  className="group text-left rounded-2xl border border-dashed border-neutral-300 bg-gradient-to-br from-white to-neutral-50 p-5 hover:border-neutral-900 hover:from-neutral-50 hover:to-white transition-all duration-200 flex flex-col items-start justify-center min-h-[148px]"
                 >
-                  <div className="flex items-center gap-2 mb-2">
-                    <Plus className="h-4 w-4" />
-                    <span className="font-semibold text-[15px] tracking-tight">Create new bot</span>
+                  <div className="h-12 w-12 rounded-xl bg-neutral-900 text-white flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                    <Plus className="h-5 w-5" />
                   </div>
-                  <p className="text-[13px] text-neutral-500">
-                    {MAX_BOTS_PER_ACCOUNT - bots.length} slot{MAX_BOTS_PER_ACCOUNT - bots.length === 1 ? "" : "s"} left on your account.
+                  <div className="font-semibold text-[15px] tracking-tight text-neutral-900">
+                    Create new bot
+                  </div>
+                  <p className="text-[13px] text-neutral-500 mt-0.5">
+                    {MAX_BOTS_PER_ACCOUNT - bots.length} slot{MAX_BOTS_PER_ACCOUNT - bots.length === 1 ? "" : "s"} left
                   </p>
                 </button>
               )}
