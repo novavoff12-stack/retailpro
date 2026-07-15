@@ -665,6 +665,21 @@ function attachHandlers(ctx) {
           return;
         }
 
+        if (content.toLowerCase() === '?help') {
+          const helpEmbed = new EmbedBuilder()
+            .setTitle('Modmail — Staff Commands')
+            .setColor(0x5865f2)
+            .addFields(
+              { name: '`?reply <message>`', value: 'Send a reply to the ticket user (attachments supported).' },
+              { name: '`?close [reason]`', value: 'Close this ticket, DM the user, log a transcript, and delete the channel.' },
+              { name: '`?review`', value: 'DM the user a star-rating prompt for this ticket.' },
+              { name: '`?aistop` / `?aistart`', value: 'Pause or resume AI auto-replies for this ticket.' },
+              { name: '`?help`', value: 'Show this message.' },
+            );
+          await msg.reply({ embeds: [helpEmbed] });
+          return;
+        }
+
         if (content.toLowerCase() === '?aistop') {
           await db.from('tickets').update({ ai_active: false }).eq('id', ticket.id);
           await msg.reply('🤖 AI paused for this ticket. Use `?aistart` to resume.');
