@@ -30,6 +30,8 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 const TRANSCRIPT_BASE = (TRANSCRIPT_BASE_URL || 'https://modmail.retailpro.space').replace(/\/+$/, '');
 const WORKER_ID = process.env.RAILWAY_REPLICA_ID || process.env.HOSTNAME || randomUUID();
 const BOT_LEASE_MS = 15_000;
+const BOT_STARTUP_TIMEOUT_MS = 90_000;
+const BOT_DISCONNECT_GRACE_MS = 45_000;
 
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
@@ -264,6 +266,7 @@ async function setBotError(botId, msg) {
 
 async function clearBotError(botId) {
   await db.from('bots').update({
+    status: 'ready',
     last_error: null,
     last_error_at: null,
     fail_count: 0,
@@ -272,7 +275,7 @@ async function clearBotError(botId) {
 
 async function bumpFail(botId, currentFail, msg) {
   const next = (currentFail ?? 0) + 1;
-  const update = { fail_count: next };
+  const update = { fail_count: next, status: 'active' };
   if (next >= 3) {
     update.last_error = msg;
     update.last_error_at = new Date().toISOString();
@@ -303,6 +306,17 @@ async function postBootAnnouncement(ctx, cfg) {
   } catch (e) {
     console.error(`[${ctx.botRow.id}] postBootAnnouncement`, e);
   }
+}
+
+async function markBotDisconnected(ctx, reason, retryDelayMs = 30_000) {
+  if (!ctx || ctx.status === 'stopping') return;
+  const message = reason || 'Bot disconnected from Discord. Restarting automatically.';
+  console.error(`[${ctx.botRow.id}] ${message}`);
+  try { ctx.client?.destroy(); } catch {}
+  ctx.status = 'failed';
+  const next = await bumpFail(ctx.botRow.id, ctx.botRow.fail_count ?? 0, message);
+  ctx.botRow.fail_count = next;
+  ctx.retryAt = Date.now() + retryDelayMs;
 }
 
 async function createTicketChannel(ctx, cfg, guild, user, category) {
@@ -400,6 +414,7 @@ async function tryAiReply(ctx, cfg, ticket, channel, user, userMessage) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         apikey: SUPABASE_SERVICE_ROLE_KEY,
+        'x-bot-token': ctx.botRow.bot_token,
       },
       body: JSON.stringify({
         bot_id: ctx.botRow.id,
@@ -917,9 +932,36 @@ function attachHandlers(ctx) {
 
   client.on('error', (err) => console.error(`[${ctx.botRow.id}] client error`, err));
   client.on('shardError', (err) => console.error(`[${ctx.botRow.id}] shard error`, err));
+  client.on('shardDisconnect', (event, shardId) => {
+    console.error(`[${ctx.botRow.id}] shard ${shardId} disconnected`, event?.code, event?.reason);
+    if (ctx.disconnectTimer) clearTimeout(ctx.disconnectTimer);
+    ctx.disconnectTimer = setTimeout(() => {
+      if (ctx.status === 'ready' && client.ws.status !== 0) {
+        markBotDisconnected(ctx, 'Discord gateway disconnected and did not recover. Restarting automatically.').catch((e) =>
+          console.error(`[${ctx.botRow.id}] mark disconnected`, e),
+        );
+      }
+    }, BOT_DISCONNECT_GRACE_MS);
+  });
+  client.on('shardReady', (shardId) => {
+    console.log(`[${ctx.botRow.id}] shard ${shardId} ready`);
+    if (ctx.disconnectTimer) {
+      clearTimeout(ctx.disconnectTimer);
+      ctx.disconnectTimer = null;
+    }
+  });
+  client.on('invalidated', () => {
+    markBotDisconnected(ctx, 'Discord session was invalidated. Restarting automatically.', 15_000).catch((e) =>
+      console.error(`[${ctx.botRow.id}] invalidated restart`, e),
+    );
+  });
 
   client.once('ready', async () => {
     ctx.status = 'ready';
+    if (ctx.startupTimer) {
+      clearTimeout(ctx.startupTimer);
+      ctx.startupTimer = null;
+    }
     console.log(`[${ctx.botRow.id}] logged in as ${client.user.tag}`);
     // Force an online presence so the bot shows as online 24/7,
     // not just after it processes its first DM/interaction.
@@ -932,6 +974,7 @@ function attachHandlers(ctx) {
       console.error(`[${ctx.botRow.id}] setPresence failed`, e);
     }
     await clearBotError(ctx.botRow.id);
+    await db.from('bots').update({ status: 'ready' }).eq('id', ctx.botRow.id);
     ctx.botRow.fail_count = 0;
     const setup = await isSetupComplete(ctx.botRow.id);
     if (setup.ok) await postBootAnnouncement(ctx, setup.guild);
@@ -945,6 +988,8 @@ async function startBot(row) {
     pendingDMs: new Map(),
     status: 'starting',
     retryAt: 0,
+    startupTimer: null,
+    disconnectTimer: null,
   };
   workers.set(row.id, ctx);
 
@@ -962,9 +1007,21 @@ async function startBot(row) {
   attachHandlers(ctx);
 
   try {
+    await db.from('bots').update({ status: 'active' }).eq('id', row.id);
+    ctx.startupTimer = setTimeout(() => {
+      if (ctx.status !== 'ready') {
+        markBotDisconnected(ctx, 'Bot login timed out before Discord reported it online. Restarting automatically.').catch((e) =>
+          console.error(`[${row.id}] startup timeout handler`, e),
+        );
+      }
+    }, BOT_STARTUP_TIMEOUT_MS);
     await client.login(row.bot_token);
     console.log(`[${row.id}] login ok (${row.bot_name ?? 'unnamed'})`);
   } catch (err) {
+    if (ctx.startupTimer) {
+      clearTimeout(ctx.startupTimer);
+      ctx.startupTimer = null;
+    }
     const m = err?.message || String(err);
     console.error(`[${row.id}] login failed: ${m}`);
     let friendly = `Bot failed to connect: ${m}`;
@@ -990,6 +1047,8 @@ async function stopBot(id, reason = '') {
   if (!w) return;
   w.status = 'stopping';
   console.log(`[${id}] stopping ${reason}`);
+  if (w.startupTimer) clearTimeout(w.startupTimer);
+  if (w.disconnectTimer) clearTimeout(w.disconnectTimer);
   try { await w.client?.destroy(); } catch {}
   workers.delete(id);
 }

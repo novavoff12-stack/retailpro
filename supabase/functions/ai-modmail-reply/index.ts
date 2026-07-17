@@ -17,12 +17,12 @@ const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  // Require shared-secret auth: bot calls this with the service-role key as bearer.
+  // Require shared-secret auth. The bot normally calls with the service-role
+  // key, but deployed workers may not have that secret injected in the same
+  // format as edge functions, so also allow the bot token for the specific
+  // bot_id in the request body.
   const authHeader = req.headers.get("Authorization") ?? "";
   const presented = authHeader.replace(/^Bearer\s+/i, "").trim();
-  if (!presented || presented !== SERVICE_KEY) {
-    return json({ error: "Unauthorized" }, 401);
-  }
 
   try {
     const { bot_id, ticket_id, user_message } = await req.json();
@@ -31,6 +31,18 @@ Deno.serve(async (req) => {
     }
 
     const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+
+    if (!presented || presented !== SERVICE_KEY) {
+      const botToken = req.headers.get("x-bot-token")?.trim() ?? "";
+      if (!botToken) return json({ error: "Unauthorized" }, 401);
+      const { data: bot } = await db
+        .from("bots")
+        .select("id")
+        .eq("id", bot_id)
+        .eq("bot_token", botToken)
+        .maybeSingle();
+      if (!bot) return json({ error: "Unauthorized" }, 401);
+    }
 
     const { data: ticket } = await db.from("tickets").select("*").eq("id", ticket_id).maybeSingle();
     if (!ticket) return json({ error: "ticket not found" }, 404);
