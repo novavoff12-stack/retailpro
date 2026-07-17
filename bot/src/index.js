@@ -399,6 +399,7 @@ async function tryAiReply(ctx, cfg, ticket, channel, user, userMessage) {
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
       },
       body: JSON.stringify({
         bot_id: ctx.botRow.id,
@@ -406,13 +407,34 @@ async function tryAiReply(ctx, cfg, ticket, channel, user, userMessage) {
         user_message: userMessage ?? '',
       }),
     });
+    const bodyText = await res.text();
     if (!res.ok) {
-      console.error(`[${ctx.botRow.id}] ai-modmail-reply HTTP ${res.status}`);
+      console.error(`[${ctx.botRow.id}] ai-modmail-reply HTTP ${res.status}`, bodyText.slice(0, 300));
+      try {
+        await channel.send({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle('AI unavailable')
+              .setDescription(`AI reply failed (HTTP ${res.status}). Staff, please take over.\n\`\`\`${bodyText.slice(0, 500)}\`\`\``)
+              .setColor(0xed4245),
+          ],
+        });
+      } catch {}
       return;
     }
-    data = await res.json();
+    try { data = JSON.parse(bodyText); } catch { data = null; }
   } catch (e) {
     console.error(`[${ctx.botRow.id}] ai-modmail-reply fetch failed`, e);
+    try {
+      await channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle('AI unavailable')
+            .setDescription(`AI reply failed: ${e?.message ?? 'network error'}`)
+            .setColor(0xed4245),
+        ],
+      });
+    } catch {}
     return;
   }
 
