@@ -30,6 +30,8 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 const TRANSCRIPT_BASE = (TRANSCRIPT_BASE_URL || 'https://modmail.retailpro.space').replace(/\/+$/, '');
 const WORKER_ID = process.env.RAILWAY_REPLICA_ID || process.env.HOSTNAME || randomUUID();
 const BOT_LEASE_MS = 15_000;
+const BOT_STARTUP_TIMEOUT_MS = 90_000;
+const BOT_DISCONNECT_GRACE_MS = 45_000;
 
 const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
@@ -264,6 +266,7 @@ async function setBotError(botId, msg) {
 
 async function clearBotError(botId) {
   await db.from('bots').update({
+    status: 'ready',
     last_error: null,
     last_error_at: null,
     fail_count: 0,
@@ -272,7 +275,7 @@ async function clearBotError(botId) {
 
 async function bumpFail(botId, currentFail, msg) {
   const next = (currentFail ?? 0) + 1;
-  const update = { fail_count: next };
+  const update = { fail_count: next, status: 'active' };
   if (next >= 3) {
     update.last_error = msg;
     update.last_error_at = new Date().toISOString();
