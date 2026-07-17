@@ -414,6 +414,7 @@ async function tryAiReply(ctx, cfg, ticket, channel, user, userMessage) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         apikey: SUPABASE_SERVICE_ROLE_KEY,
+        'x-bot-token': ctx.botRow.bot_token,
       },
       body: JSON.stringify({
         bot_id: ctx.botRow.id,
