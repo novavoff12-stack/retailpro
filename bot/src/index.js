@@ -987,6 +987,8 @@ async function startBot(row) {
     pendingDMs: new Map(),
     status: 'starting',
     retryAt: 0,
+    startupTimer: null,
+    disconnectTimer: null,
   };
   workers.set(row.id, ctx);
 
@@ -1004,9 +1006,21 @@ async function startBot(row) {
   attachHandlers(ctx);
 
   try {
+    await db.from('bots').update({ status: 'active' }).eq('id', row.id);
+    ctx.startupTimer = setTimeout(() => {
+      if (ctx.status !== 'ready') {
+        markBotDisconnected(ctx, 'Bot login timed out before Discord reported it online. Restarting automatically.').catch((e) =>
+          console.error(`[${row.id}] startup timeout handler`, e),
+        );
+      }
+    }, BOT_STARTUP_TIMEOUT_MS);
     await client.login(row.bot_token);
     console.log(`[${row.id}] login ok (${row.bot_name ?? 'unnamed'})`);
   } catch (err) {
+    if (ctx.startupTimer) {
+      clearTimeout(ctx.startupTimer);
+      ctx.startupTimer = null;
+    }
     const m = err?.message || String(err);
     console.error(`[${row.id}] login failed: ${m}`);
     let friendly = `Bot failed to connect: ${m}`;
@@ -1032,6 +1046,8 @@ async function stopBot(id, reason = '') {
   if (!w) return;
   w.status = 'stopping';
   console.log(`[${id}] stopping ${reason}`);
+  if (w.startupTimer) clearTimeout(w.startupTimer);
+  if (w.disconnectTimer) clearTimeout(w.disconnectTimer);
   try { await w.client?.destroy(); } catch {}
   workers.delete(id);
 }
