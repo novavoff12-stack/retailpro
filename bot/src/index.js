@@ -308,6 +308,17 @@ async function postBootAnnouncement(ctx, cfg) {
   }
 }
 
+async function markBotDisconnected(ctx, reason, retryDelayMs = 30_000) {
+  if (!ctx || ctx.status === 'stopping') return;
+  const message = reason || 'Bot disconnected from Discord. Restarting automatically.';
+  console.error(`[${ctx.botRow.id}] ${message}`);
+  try { ctx.client?.destroy(); } catch {}
+  ctx.status = 'failed';
+  const next = await bumpFail(ctx.botRow.id, ctx.botRow.fail_count ?? 0, message);
+  ctx.botRow.fail_count = next;
+  ctx.retryAt = Date.now() + retryDelayMs;
+}
+
 async function createTicketChannel(ctx, cfg, guild, user, category) {
   const overwrites = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
@@ -920,9 +931,36 @@ function attachHandlers(ctx) {
 
   client.on('error', (err) => console.error(`[${ctx.botRow.id}] client error`, err));
   client.on('shardError', (err) => console.error(`[${ctx.botRow.id}] shard error`, err));
+  client.on('shardDisconnect', (event, shardId) => {
+    console.error(`[${ctx.botRow.id}] shard ${shardId} disconnected`, event?.code, event?.reason);
+    if (ctx.disconnectTimer) clearTimeout(ctx.disconnectTimer);
+    ctx.disconnectTimer = setTimeout(() => {
+      if (ctx.status === 'ready' && client.ws.status !== 0) {
+        markBotDisconnected(ctx, 'Discord gateway disconnected and did not recover. Restarting automatically.').catch((e) =>
+          console.error(`[${ctx.botRow.id}] mark disconnected`, e),
+        );
+      }
+    }, BOT_DISCONNECT_GRACE_MS);
+  });
+  client.on('shardReady', (shardId) => {
+    console.log(`[${ctx.botRow.id}] shard ${shardId} ready`);
+    if (ctx.disconnectTimer) {
+      clearTimeout(ctx.disconnectTimer);
+      ctx.disconnectTimer = null;
+    }
+  });
+  client.on('invalidated', () => {
+    markBotDisconnected(ctx, 'Discord session was invalidated. Restarting automatically.', 15_000).catch((e) =>
+      console.error(`[${ctx.botRow.id}] invalidated restart`, e),
+    );
+  });
 
   client.once('ready', async () => {
     ctx.status = 'ready';
+    if (ctx.startupTimer) {
+      clearTimeout(ctx.startupTimer);
+      ctx.startupTimer = null;
+    }
     console.log(`[${ctx.botRow.id}] logged in as ${client.user.tag}`);
     // Force an online presence so the bot shows as online 24/7,
     // not just after it processes its first DM/interaction.
@@ -935,6 +973,7 @@ function attachHandlers(ctx) {
       console.error(`[${ctx.botRow.id}] setPresence failed`, e);
     }
     await clearBotError(ctx.botRow.id);
+    await db.from('bots').update({ status: 'ready' }).eq('id', ctx.botRow.id);
     ctx.botRow.fail_count = 0;
     const setup = await isSetupComplete(ctx.botRow.id);
     if (setup.ok) await postBootAnnouncement(ctx, setup.guild);
